@@ -17,9 +17,11 @@ struct SpaceDetailView: View {
 
     @State private var isPresentingFileManager = false
     @State private var questionInput: String = ""
+    @FocusState private var isAskFieldFocused: Bool
 
     @Query private var generatedBlocks: [GeneratedBlock]
     @Query private var questions: [SpaceQuestion]
+    @Query private var files: [SpaceFile]
     private let blockSeeder = BlockSeeder()
     private let orchestrator = AIGenerationOrchestrator()
 
@@ -42,6 +44,11 @@ struct SpaceDetailView: View {
             filter: #Predicate<SpaceQuestion> { $0.space.id == spaceId },
             sort: [SortDescriptor(\SpaceQuestion.createdAt, order: .forward)]
         )
+
+        _files = Query(
+            filter: #Predicate<SpaceFile> { $0.space.id == spaceId },
+            sort: []
+        )
     }
 
     var body: some View {
@@ -54,6 +61,10 @@ struct SpaceDetailView: View {
                 Text("Using \(effective.displayName)")
                     .font(.footnote)
                     .foregroundStyle(.secondary)
+
+                if files.isEmpty {
+                    noContentYetBanner
+                }
 
                 if !questions.isEmpty {
                     questionsList
@@ -155,6 +166,10 @@ private extension SpaceDetailView {
                 TextField("Ask about this Space…", text: $questionInput)
                     .textInputAutocapitalization(.sentences)
                     .autocorrectionDisabled()
+                    .focused($isAskFieldFocused)
+                    .submitLabel(.send)
+                    .onSubmit { sendQuestion() }
+                    .accessibilityLabel("Ask about this Space")
 
                 Spacer(minLength: 0)
             }
@@ -170,6 +185,7 @@ private extension SpaceDetailView {
             }
             .disabled(questionInput.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
             .buttonStyle(.plain)
+            .accessibilityLabel("Send question")
         }
         .padding(.horizontal, 16)
         .padding(.top, 10)
@@ -203,10 +219,9 @@ private extension SpaceDetailView {
                                 .foregroundStyle(.secondary)
                         }
                     case .failed:
-                        let suffix = q.errorMessage.map { ": \($0)" } ?? ""
-                        Text("Failed\(suffix)")
+                        Text("Couldn’t answer right now.")
                             .font(.footnote)
-                            .foregroundStyle(.red)
+                            .foregroundStyle(.secondary)
                     }
                 }
                 .padding(12)
@@ -222,6 +237,7 @@ private extension SpaceDetailView {
         let q = SpaceQuestion(space: space, question: trimmed)
         modelContext.insert(q)
         questionInput = ""
+        isAskFieldFocused = false
 
         Task {
             await orchestrator.answerIfNeeded(
@@ -230,6 +246,20 @@ private extension SpaceDetailView {
                 in: modelContext
             )
         }
+    }
+
+    var noContentYetBanner: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            Text("No content yet")
+                .font(.headline)
+
+            Text("Add files or paste text in Space Files to generate learning blocks.")
+                .font(.subheadline)
+                .foregroundStyle(.secondary)
+        }
+        .padding(12)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(.secondary.opacity(0.08), in: RoundedRectangle(cornerRadius: 12, style: .continuous))
     }
 
     var fallbackBanner: some View {

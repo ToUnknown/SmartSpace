@@ -6,6 +6,7 @@
 //
 
 import SwiftUI
+import UIKit
 
 struct FlashcardsStudyView: View {
     @Environment(\.dismiss) private var dismiss
@@ -25,6 +26,7 @@ struct FlashcardsStudyView: View {
                         Text("Card \(index + 1) of \(cards.count)")
                             .font(.subheadline)
                             .foregroundStyle(.secondary)
+                            .accessibilityLabel("Card \(index + 1) of \(cards.count)")
 
                         cardView
 
@@ -33,6 +35,7 @@ struct FlashcardsStudyView: View {
                                 goPrevious()
                             }
                             .disabled(index == 0)
+                            .accessibilityLabel("Previous card")
 
                             Spacer(minLength: 0)
 
@@ -40,6 +43,7 @@ struct FlashcardsStudyView: View {
                                 goNext()
                             }
                             .disabled(index >= cards.count - 1)
+                            .accessibilityLabel("Next card")
                         }
                         .padding(.horizontal, 16)
                         .padding(.bottom, 8)
@@ -52,6 +56,7 @@ struct FlashcardsStudyView: View {
             .toolbar {
                 ToolbarItem(placement: .topBarTrailing) {
                     Button("Done") { dismiss() }
+                        .accessibilityLabel("Done")
                 }
             }
         }
@@ -91,25 +96,29 @@ private extension FlashcardsStudyView {
         .padding(.horizontal, 16)
         .contentShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
         .onTapGesture {
+            UIImpactFeedbackGenerator(style: .light).impactOccurred()
             withAnimation(.easeInOut(duration: 0.18)) {
                 isShowingBack.toggle()
             }
         }
+        .accessibilityLabel("\(sideLabel). \(text)")
+        .accessibilityHint("Double-tap to flip the card.")
     }
 
     var errorState: some View {
         VStack(spacing: 10) {
-            Text("Flashcards unavailable")
+            Text("Not ready yet")
                 .font(.title3)
                 .fontWeight(.semibold)
 
-            Text("This Space has no valid flashcards payload yet.")
+            Text("There are no flashcards available for this Space yet.")
                 .font(.subheadline)
                 .foregroundStyle(.secondary)
                 .multilineTextAlignment(.center)
 
             Button("Close") { dismiss() }
                 .padding(.top, 8)
+                .accessibilityLabel("Close")
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .padding()

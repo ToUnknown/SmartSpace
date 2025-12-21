@@ -6,6 +6,7 @@
 //
 
 import SwiftUI
+import UIKit
 
 struct QuizStudyView: View {
     @Environment(\.dismiss) private var dismiss
@@ -33,6 +34,7 @@ struct QuizStudyView: View {
             .toolbar {
                 ToolbarItem(placement: .topBarTrailing) {
                     Button("Done") { dismiss() }
+                        .accessibilityLabel("Done")
                 }
             }
         }
@@ -55,6 +57,7 @@ private extension QuizStudyView {
                     .foregroundStyle(.secondary)
                     .padding(.horizontal, 16)
                     .padding(.top, 12)
+                    .accessibilityLabel("Question \(index + 1) of \(questions.count)")
 
                 Text(q.question)
                     .font(.title3.weight(.semibold))
@@ -86,6 +89,7 @@ private extension QuizStudyView {
                     }
                     .padding(.horizontal, 16)
                     .padding(.bottom, 16)
+                    .accessibilityLabel(index == questions.count - 1 ? "Finish quiz" : "Next question")
                 }
             }
         )
@@ -126,11 +130,23 @@ private extension QuizStudyView {
 
                 if showFeedback {
                     if isCorrect {
-                        Image(systemName: "checkmark.circle.fill")
-                            .foregroundStyle(.green)
+                        HStack(spacing: 6) {
+                            Text("Correct")
+                                .font(.caption.weight(.semibold))
+                                .foregroundStyle(.green)
+                            Image(systemName: "checkmark.circle.fill")
+                                .foregroundStyle(.green)
+                                .accessibilityHidden(true)
+                        }
                     } else if isSelected && !isCorrect {
-                        Image(systemName: "xmark.circle.fill")
-                            .foregroundStyle(.red)
+                        HStack(spacing: 6) {
+                            Text("Incorrect")
+                                .font(.caption.weight(.semibold))
+                                .foregroundStyle(.red)
+                            Image(systemName: "xmark.circle.fill")
+                                .foregroundStyle(.red)
+                                .accessibilityHidden(true)
+                        }
                     }
                 }
             }
@@ -143,6 +159,8 @@ private extension QuizStudyView {
         }
         .buttonStyle(.plain)
         .disabled(locked) // lock after selection
+        .accessibilityLabel(accessibilityOptionLabel(option: option, optionIndex: optionIndex, correctIndex: correctIndex))
+        .accessibilityHint(locked ? "Selection locked." : "Double-tap to select.")
     }
 
     func selectOption(_ optionIndex: Int, correctIndex: Int) {
@@ -150,6 +168,9 @@ private extension QuizStudyView {
         selectedIndex = optionIndex
         if optionIndex == correctIndex {
             correctCount += 1
+            UINotificationFeedbackGenerator().notificationOccurred(.success)
+        } else {
+            UINotificationFeedbackGenerator().notificationOccurred(.warning)
         }
     }
 
@@ -182,27 +203,50 @@ private extension QuizStudyView {
 
             Button("Done") { dismiss() }
                 .padding(.top, 14)
+                .accessibilityLabel("Done")
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .padding()
+        .onAppear {
+            UINotificationFeedbackGenerator().notificationOccurred(.success)
+        }
     }
 
     var errorState: some View {
         VStack(spacing: 10) {
-            Text("Quiz unavailable")
+            Text("Not ready yet")
                 .font(.title3)
                 .fontWeight(.semibold)
 
-            Text("This Space has no valid quiz payload yet.")
+            Text("There is no quiz available for this Space yet.")
                 .font(.subheadline)
                 .foregroundStyle(.secondary)
                 .multilineTextAlignment(.center)
 
             Button("Close") { dismiss() }
                 .padding(.top, 8)
+                .accessibilityLabel("Close")
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .padding()
+    }
+
+    func accessibilityOptionLabel(option: String, optionIndex: Int, correctIndex: Int) -> String {
+        let locked = selectedIndex != nil
+        let isSelected = selectedIndex == optionIndex
+        let isCorrect = optionIndex == correctIndex
+
+        if !locked {
+            return "Option: \(option)"
+        }
+
+        if isCorrect {
+            return "Option: \(option). Correct."
+        }
+        if isSelected && !isCorrect {
+            return "Option: \(option). Incorrect."
+        }
+        return "Option: \(option)."
     }
 }
 

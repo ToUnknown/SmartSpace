@@ -6,11 +6,12 @@
 //
 
 import SwiftUI
+import UIKit
 
 struct BlockPlaceholderView: View {
     let blockType: BlockType
     var block: GeneratedBlock? = nil
-    var subtitle: String? = "Placeholder"
+    var subtitle: String? = nil
 
     /// Use for visual consistency between half-width and full-width blocks.
     var minHeight: CGFloat = 96
@@ -95,8 +96,8 @@ struct BlockPlaceholderView: View {
                         }
                     }
                 }
-            } else if let subtitle {
-                Text(subtitle)
+            } else {
+                Text(fallbackSubtitle)
                     .font(.subheadline)
                     .foregroundStyle(.secondary)
             }
@@ -110,11 +111,16 @@ struct BlockPlaceholderView: View {
             RoundedRectangle(cornerRadius: 14, style: .continuous)
                 .stroke(.secondary.opacity(0.18), lineWidth: 1)
         )
+        .animation(.easeInOut(duration: 0.15), value: effectiveStatus)
+        .accessibilityElement(children: .combine)
+        .accessibilityLabel(accessibilityTitle)
+        .accessibilityHint(accessibilityHint)
 
         if isFlashcardsInteractive {
             content
                 .contentShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
                 .onTapGesture {
+                    UIImpactFeedbackGenerator(style: .light).impactOccurred()
                     isPresentingFlashcardsStudy = true
                 }
                 .fullScreenCover(isPresented: $isPresentingFlashcardsStudy) {
@@ -124,6 +130,7 @@ struct BlockPlaceholderView: View {
             content
                 .contentShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
                 .onTapGesture {
+                    UIImpactFeedbackGenerator(style: .light).impactOccurred()
                     isPresentingQuizStudy = true
                 }
                 .fullScreenCover(isPresented: $isPresentingQuizStudy) {
@@ -138,6 +145,20 @@ struct BlockPlaceholderView: View {
 private extension BlockPlaceholderView {
     var effectiveStatus: BlockStatus {
         block?.status ?? .idle
+    }
+
+    var fallbackSubtitle: String {
+        if let subtitle { return subtitle }
+        switch effectiveStatus {
+        case .idle:
+            return "Not ready yet"
+        case .generating:
+            return "Working…"
+        case .ready:
+            return "Ready"
+        case .failed:
+            return "Not ready yet"
+        }
     }
 
     var shouldRenderSummaryText: Bool {
@@ -288,6 +309,23 @@ private extension BlockPlaceholderView {
             return .red
         }
     }
+
+    var accessibilityTitle: String {
+        "\(blockType.title), \(statusLabel)"
+    }
+
+    var accessibilityHint: String {
+        if isFlashcardsInteractive {
+            return "Double-tap to study flashcards."
+        }
+        if isQuizInteractive {
+            return "Double-tap to take the quiz."
+        }
+        if effectiveStatus == .generating {
+            return "This block is being generated."
+        }
+        return ""
+    }
 }
 
 private extension BlockType {
@@ -308,10 +346,10 @@ private extension BlockType {
 private extension BlockStatus {
     var displayName: String {
         switch self {
-        case .idle: return "Idle"
-        case .generating: return "Generating"
+        case .idle: return "Not ready"
+        case .generating: return "Working…"
         case .ready: return "Ready"
-        case .failed: return "Failed"
+        case .failed: return "Not ready"
         }
     }
 }

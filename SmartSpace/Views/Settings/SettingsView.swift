@@ -75,7 +75,7 @@ private extension SettingsView {
                 .foregroundStyle(statusColor)
 
             if case .invalid(let error) = openAIKeyManager.status {
-                Text("Invalid (\(error))")
+                Text(invalidKeyMessage(for: error))
                     .font(.footnote)
                     .foregroundStyle(.secondary)
             }
@@ -107,6 +107,18 @@ private extension SettingsView {
         case .invalid:
             return .red
         }
+    }
+
+    func invalidKeyMessage(for error: String) -> String {
+        // Keep this human-readable. Avoid dumping raw technical errors into the UI.
+        let lower = error.lowercased()
+        if lower.contains("incorrect") && lower.contains("api key") {
+            return "Couldn’t validate key. Please check it and try again."
+        }
+        if lower.contains("network") || lower.contains("offline") {
+            return "Couldn’t validate key. Check your connection and try again."
+        }
+        return "Couldn’t validate key. Please try again."
     }
 }
 

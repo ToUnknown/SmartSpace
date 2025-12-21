@@ -246,10 +246,10 @@ private extension SourceType {
 private extension ExtractionStatus {
     var label: String {
         switch self {
-        case .pending: return "Pending"
-        case .extracting: return "Extracting"
-        case .completed: return "Completed"
-        case .failed: return "Failed"
+        case .pending: return "Not ready"
+        case .extracting: return "Working…"
+        case .completed: return "Ready"
+        case .failed: return "Couldn’t extract"
         }
     }
 
@@ -269,6 +269,7 @@ private struct PasteTextView: View {
     let onSave: (String) -> Void
 
     @State private var text: String = ""
+    @FocusState private var isFocused: Bool
 
     var body: some View {
         NavigationStack {
@@ -281,22 +282,40 @@ private struct PasteTextView: View {
                             .stroke(.secondary.opacity(0.18), lineWidth: 1)
                     )
                     .padding()
+                    .focused($isFocused)
+                    .accessibilityLabel("Pasted text")
             }
             .navigationTitle("Paste Text")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
-                    Button("Cancel") { dismiss() }
+                    Button("Cancel") {
+                        isFocused = false
+                        dismiss()
+                    }
                 }
                 ToolbarItem(placement: .confirmationAction) {
                     Button("Save") {
                         let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
                         guard !trimmed.isEmpty else { return }
                         onSave(trimmed)
+                        isFocused = false
                         dismiss()
                     }
                     .disabled(text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
                 }
+            }
+            .toolbar {
+                ToolbarItemGroup(placement: .keyboard) {
+                    Spacer()
+                    Button("Done") { isFocused = false }
+                }
+            }
+        }
+        .onAppear {
+            // Best-effort focus for a smoother paste flow.
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
+                isFocused = true
             }
         }
     }
