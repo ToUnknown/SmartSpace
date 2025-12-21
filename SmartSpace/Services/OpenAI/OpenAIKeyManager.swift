@@ -1,0 +1,96 @@
+//
+//  OpenAIKeyManager.swift
+//  SmartSpace
+//
+//  v0.4.2: OpenAI key status manager (stores status only; key stays in Keychain)
+//
+
+import Foundation
+import Observation
+
+@MainActor
+@Observable
+final class OpenAIKeyManager {
+    enum KeyStatus: Equatable {
+        case notSet
+        case checking
+        case valid
+        case invalid(error: String)
+    }
+
+    private let keyStore: OpenAIKeyStore
+    private let client: OpenAIClient
+
+    private(set) var status: KeyStatus = .notSet
+    private(set) var hasStoredKey: Bool = false
+
+    init(
+        keyStore: OpenAIKeyStore = OpenAIKeyStore(),
+        client: OpenAIClient = OpenAIClient()
+    ) {
+        self.keyStore = keyStore
+        self.client = client
+        loadKeyStatus()
+    }
+
+    func loadKeyStatus() {
+        do {
+            hasStoredKey = (try keyStore.readKey()) != nil
+        } catch {
+            hasStoredKey = false
+        }
+        // Do not auto-test; leave status neutral until user taps "Test connection".
+        status = .notSet
+    }
+
+    func saveKey(_ key: String) {
+        let trimmed = key.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { return }
+
+        do {
+            try keyStore.saveKey(trimmed)
+            hasStoredKey = true
+            status = .notSet
+        } catch {
+            hasStoredKey = false
+            status = .invalid(error: error.localizedDescription)
+        }
+    }
+
+    func removeKey() {
+        do {
+            try keyStore.deleteKey()
+        } catch {
+            // If deletion fails, still reflect the error for transparency.
+            status = .invalid(error: error.localizedDescription)
+        }
+        hasStoredKey = false
+        status = .notSet
+    }
+
+    func testKey() async {
+        do {
+            guard let key = try keyStore.readKey(), !key.isEmpty else {
+                hasStoredKey = false
+                status = .notSet
+                return
+            }
+
+            hasStoredKey = true
+            status = .checking
+
+            let result = await client.validateKey(key)
+            switch result {
+            case .valid:
+                status = .valid
+            case .invalid(let message):
+                status = .invalid(error: message)
+            }
+        } catch {
+            hasStoredKey = false
+            status = .invalid(error: error.localizedDescription)
+        }
+    }
+}
+
+
