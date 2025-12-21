@@ -16,7 +16,7 @@ struct BlockPlaceholderView: View {
     var minHeight: CGFloat = 96
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 6) {
+        VStack(alignment: .leading, spacing: 8) {
             HStack(alignment: .firstTextBaseline, spacing: 8) {
                 Text(blockType.title)
                     .font(.headline)
@@ -28,7 +28,33 @@ struct BlockPlaceholderView: View {
                     .foregroundStyle(statusColor)
             }
 
-            if let subtitle {
+            if shouldRenderSummaryText, let summaryText {
+                Text(summaryText)
+                    .font(.subheadline)
+                    .foregroundStyle(.primary)
+                    .lineLimit(6)
+            } else if shouldRenderFlashcardsPreview, let info = flashcardsPreview {
+                VStack(alignment: .leading, spacing: 6) {
+                    Text("\(info.count) cards")
+                        .font(.subheadline.weight(.semibold))
+                        .foregroundStyle(.primary)
+
+                    ForEach(Array(info.preview.enumerated()), id: \.offset) { _, card in
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text(card.front)
+                                .font(.subheadline)
+                                .fontWeight(.semibold)
+                                .foregroundStyle(.primary)
+                                .lineLimit(1)
+
+                            Text(card.back)
+                                .font(.subheadline)
+                                .foregroundStyle(.secondary)
+                                .lineLimit(2)
+                        }
+                    }
+                }
+            } else if let subtitle {
                 Text(subtitle)
                     .font(.subheadline)
                     .foregroundStyle(.secondary)
@@ -49,6 +75,47 @@ struct BlockPlaceholderView: View {
 private extension BlockPlaceholderView {
     var effectiveStatus: BlockStatus {
         block?.status ?? .idle
+    }
+
+    var shouldRenderSummaryText: Bool {
+        blockType == .summary && effectiveStatus == .ready
+    }
+
+    var shouldRenderFlashcardsPreview: Bool {
+        blockType == .flashcards && effectiveStatus == .ready
+    }
+
+    var summaryText: String? {
+        guard shouldRenderSummaryText, let data = block?.payload else { return nil }
+        struct SummaryPayload: Decodable { let text: String }
+        guard let decoded = try? JSONDecoder().decode(SummaryPayload.self, from: data) else {
+            return nil
+        }
+        let trimmed = decoded.text.trimmingCharacters(in: .whitespacesAndNewlines)
+        return trimmed.isEmpty ? nil : trimmed
+    }
+
+    var flashcardsPreview: (count: Int, preview: [(front: String, back: String)])? {
+        guard shouldRenderFlashcardsPreview, let data = block?.payload else { return nil }
+
+        struct FlashcardsPayload: Decodable {
+            struct Card: Decodable {
+                let front: String
+                let back: String
+            }
+            let cards: [Card]
+        }
+
+        guard let decoded = try? JSONDecoder().decode(FlashcardsPayload.self, from: data) else {
+            return nil
+        }
+        let pairs = decoded.cards
+            .map { (front: $0.front.trimmingCharacters(in: .whitespacesAndNewlines),
+                    back: $0.back.trimmingCharacters(in: .whitespacesAndNewlines)) }
+            .filter { !$0.front.isEmpty && !$0.back.isEmpty }
+
+        guard !pairs.isEmpty else { return nil }
+        return (count: pairs.count, preview: Array(pairs.prefix(2)))
     }
 
     var statusLabel: String {

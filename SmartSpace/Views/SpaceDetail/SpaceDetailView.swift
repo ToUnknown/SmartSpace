@@ -19,6 +19,7 @@ struct SpaceDetailView: View {
 
     @Query private var generatedBlocks: [GeneratedBlock]
     private let blockSeeder = BlockSeeder()
+    private let orchestrator = AIGenerationOrchestrator()
 
     init(
         space: Space,
@@ -73,6 +74,20 @@ struct SpaceDetailView: View {
         .task {
             // v0.8: Deterministically ensure blocks exist (create missing only).
             blockSeeder.seedBlocksIfNeeded(for: space, in: modelContext)
+
+            // v0.9: Generate Summary if needed (idempotent; does not overwrite ready blocks).
+            await orchestrator.generateSummaryIfNeeded(
+                for: space,
+                openAIStatus: openAIKeyManager.status,
+                in: modelContext
+            )
+
+            // v0.10: Generate Flashcards if needed (independent of Summary result).
+            await orchestrator.generateFlashcardsIfNeeded(
+                for: space,
+                openAIStatus: openAIKeyManager.status,
+                in: modelContext
+            )
         }
     }
 }
