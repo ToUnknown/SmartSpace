@@ -15,8 +15,10 @@ struct BlockPlaceholderView: View {
     /// Use for visual consistency between half-width and full-width blocks.
     var minHeight: CGFloat = 96
 
+    @State private var isPresentingFlashcardsStudy = false
+
     var body: some View {
-        VStack(alignment: .leading, spacing: 8) {
+        let content = VStack(alignment: .leading, spacing: 8) {
             HStack(alignment: .firstTextBaseline, spacing: 8) {
                 Text(blockType.title)
                     .font(.headline)
@@ -107,6 +109,19 @@ struct BlockPlaceholderView: View {
             RoundedRectangle(cornerRadius: 14, style: .continuous)
                 .stroke(.secondary.opacity(0.18), lineWidth: 1)
         )
+
+        if isFlashcardsInteractive {
+            content
+                .contentShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
+                .onTapGesture {
+                    isPresentingFlashcardsStudy = true
+                }
+                .fullScreenCover(isPresented: $isPresentingFlashcardsStudy) {
+                    FlashcardsStudyView(cards: flashcardsDeck ?? [])
+                }
+        } else {
+            content
+        }
     }
 }
 
@@ -121,6 +136,10 @@ private extension BlockPlaceholderView {
 
     var shouldRenderFlashcardsPreview: Bool {
         blockType == .flashcards && effectiveStatus == .ready
+    }
+
+    var isFlashcardsInteractive: Bool {
+        blockType == .flashcards && effectiveStatus == .ready && flashcardsDeck != nil
     }
 
     var shouldRenderQuizPreview: Bool {
@@ -162,6 +181,29 @@ private extension BlockPlaceholderView {
 
         guard !pairs.isEmpty else { return nil }
         return (count: pairs.count, preview: Array(pairs.prefix(2)))
+    }
+
+    var flashcardsDeck: [Flashcard]? {
+        guard shouldRenderFlashcardsPreview, let data = block?.payload else { return nil }
+
+        struct FlashcardsPayload: Decodable {
+            struct Card: Decodable {
+                let front: String
+                let back: String
+            }
+            let cards: [Card]
+        }
+
+        guard let decoded = try? JSONDecoder().decode(FlashcardsPayload.self, from: data) else {
+            return nil
+        }
+
+        let cards = decoded.cards
+            .map { Flashcard(front: $0.front.trimmingCharacters(in: .whitespacesAndNewlines),
+                             back: $0.back.trimmingCharacters(in: .whitespacesAndNewlines)) }
+            .filter { !$0.front.isEmpty && !$0.back.isEmpty }
+
+        return cards.isEmpty ? nil : cards
     }
 
     var quizPreview: (count: Int, first: QuizQuestion)? {
