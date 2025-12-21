@@ -55,6 +55,17 @@ struct AppleIntelligenceService: AIService {
             )
         ]
     }
+
+    func generateKeyTerms(context: String) async throws -> [(term: String, definition: String)] {
+        // TODO v0.12: Replace stub with real Apple Intelligence API call when stable/available.
+        let trimmed = context.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { return [] }
+
+        return [
+            (term: "SmartSpace", definition: "An app that collects learning content and generates structured study outputs."),
+            (term: "Space", definition: "A container for content and generated blocks tied to a specific learning template.")
+        ]
+    }
 }
 
 

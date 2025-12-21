@@ -25,6 +25,14 @@ struct AIGenerationOrchestrator {
         let questions: [QuizQuestion]
     }
 
+    struct KeyTermsPayload: Codable {
+        struct Term: Codable {
+            let term: String
+            let definition: String
+        }
+        let terms: [Term]
+    }
+
     var contextBuilder = SpaceContextBuilder()
     var appleService: AIService = AppleIntelligenceService()
     var openAIService: AIService = OpenAIService()
@@ -137,6 +145,46 @@ struct AIGenerationOrchestrator {
             }
 
             let payload = QuizPayload(questions: questions)
+            block.payload = try JSONEncoder().encode(payload)
+            block.status = .ready
+            block.updatedAt = .now
+            block.errorMessage = nil
+        } catch {
+            block.status = .failed
+            block.updatedAt = .now
+            block.errorMessage = error.localizedDescription
+        }
+    }
+
+    @MainActor
+    func generateKeyTermsIfNeeded(
+        for space: Space,
+        openAIStatus: OpenAIKeyManager.KeyStatus,
+        in modelContext: ModelContext
+    ) async {
+        guard let block = fetchBlock(for: space, blockType: .keyTerms, in: modelContext) else { return }
+        guard block.status == .idle else { return }
+
+        let context = contextBuilder.buildContext(for: space, in: modelContext)
+        guard !context.isEmpty else { return }
+
+        block.status = .generating
+        block.errorMessage = nil
+
+        let provider = effectiveProvider(for: space, openAIStatus: openAIStatus)
+
+        do {
+            let terms: [(term: String, definition: String)]
+            switch provider {
+            case .appleIntelligence:
+                terms = try await appleService.generateKeyTerms(context: context)
+            case .openAI:
+                terms = try await openAIService.generateKeyTerms(context: context)
+            }
+
+            let payload = KeyTermsPayload(
+                terms: terms.map { KeyTermsPayload.Term(term: $0.term, definition: $0.definition) }
+            )
             block.payload = try JSONEncoder().encode(payload)
             block.status = .ready
             block.updatedAt = .now

@@ -95,6 +95,13 @@ struct SpaceDetailView: View {
                 openAIStatus: openAIKeyManager.status,
                 in: modelContext
             )
+
+            // v0.12: Generate Key Terms if needed (independent lifecycle).
+            await orchestrator.generateKeyTermsIfNeeded(
+                for: space,
+                openAIStatus: openAIKeyManager.status,
+                in: modelContext
+            )
         }
     }
 }

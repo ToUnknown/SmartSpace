@@ -201,6 +201,69 @@ Rules:
         return questions
     }
 
+    func generateKeyTerms(context: String) async throws -> [(term: String, definition: String)] {
+        let key = try keyStore.readKey()
+        guard let apiKey = key, !apiKey.isEmpty else {
+            throw OpenAIServiceError.missingAPIKey
+        }
+
+        guard let url = URL(string: "https://api.openai.com/v1/responses") else {
+            throw OpenAIServiceError.invalidResponse
+        }
+
+        var request = URLRequest(url: url)
+        request.httpMethod = "POST"
+        request.setValue("Bearer \(apiKey)", forHTTPHeaderField: "Authorization")
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+
+        let systemPrompt = """
+Extract key terms and their definitions from the following content.
+Return ONLY valid JSON with the shape:
+{
+  "terms": [
+    { "term": "Concept or word", "definition": "Short, clear definition" }
+  ]
+}
+Rules:
+- term must be non-empty
+- definition must be non-empty (1–2 sentences)
+"""
+
+        let body: [String: Any] = [
+            "model": "gpt-5-mini",
+            "input": [
+                [
+                    "role": "system",
+                    "content": systemPrompt
+                ],
+                [
+                    "role": "user",
+                    "content": context
+                ]
+            ],
+            "max_output_tokens": 500
+        ]
+
+        request.httpBody = try JSONSerialization.data(withJSONObject: body)
+
+        let (data, response) = try await session.data(for: request)
+        guard let http = response as? HTTPURLResponse else {
+            throw OpenAIServiceError.invalidResponse
+        }
+        guard (200...299).contains(http.statusCode) else {
+            let message = decodeErrorMessage(from: data)
+                ?? HTTPURLResponse.localizedString(forStatusCode: http.statusCode)
+            throw OpenAIServiceError.apiError(message)
+        }
+
+        guard let text = decodeSummaryText(from: data) else {
+            throw OpenAIServiceError.invalidResponse
+        }
+
+        let terms = try decodeKeyTermsJSON(from: text)
+        return terms
+    }
+
     private func decodeErrorMessage(from data: Data) -> String? {
         struct ErrorEnvelope: Decodable {
             struct APIError: Decodable { let message: String? }
@@ -309,6 +372,34 @@ Rules:
         }
 
         return cleaned
+    }
+
+    private func decodeKeyTermsJSON(from text: String) throws -> [(term: String, definition: String)] {
+        struct KeyTermsPayload: Decodable {
+            struct Term: Decodable {
+                let term: String
+                let definition: String
+            }
+            let terms: [Term]
+        }
+
+        let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard let data = trimmed.data(using: .utf8) else {
+            throw OpenAIServiceError.invalidResponse
+        }
+        let decoded = try JSONDecoder().decode(KeyTermsPayload.self, from: data)
+
+        let pairs = decoded.terms.map { item in
+            (
+                term: item.term.trimmingCharacters(in: .whitespacesAndNewlines),
+                definition: item.definition.trimmingCharacters(in: .whitespacesAndNewlines)
+            )
+        }.filter { !$0.term.isEmpty && !$0.definition.isEmpty }
+
+        guard !pairs.isEmpty else {
+            throw OpenAIServiceError.invalidResponse
+        }
+        return pairs
     }
 }
 

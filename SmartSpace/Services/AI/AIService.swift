@@ -17,6 +17,10 @@ protocol AIService {
     func generateQuiz(
         context: String
     ) async throws -> [QuizQuestion]
+
+    func generateKeyTerms(
+        context: String
+    ) async throws -> [(term: String, definition: String)]
 }
 
 

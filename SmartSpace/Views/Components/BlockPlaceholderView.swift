@@ -72,6 +72,26 @@ struct BlockPlaceholderView: View {
                             .lineLimit(1)
                     }
                 }
+            } else if shouldRenderKeyTermsPreview, let info = keyTermsPreview {
+                VStack(alignment: .leading, spacing: 6) {
+                    Text("\(info.count) terms")
+                        .font(.subheadline.weight(.semibold))
+                        .foregroundStyle(.primary)
+
+                    ForEach(Array(info.preview.enumerated()), id: \.offset) { _, item in
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text(item.term)
+                                .font(.subheadline.weight(.semibold))
+                                .foregroundStyle(.primary)
+                                .lineLimit(1)
+
+                            Text(item.definition)
+                                .font(.subheadline)
+                                .foregroundStyle(.secondary)
+                                .lineLimit(2)
+                        }
+                    }
+                }
             } else if let subtitle {
                 Text(subtitle)
                     .font(.subheadline)
@@ -105,6 +125,10 @@ private extension BlockPlaceholderView {
 
     var shouldRenderQuizPreview: Bool {
         blockType == .quiz && effectiveStatus == .ready
+    }
+
+    var shouldRenderKeyTermsPreview: Bool {
+        blockType == .keyTerms && effectiveStatus == .ready
     }
 
     var summaryText: String? {
@@ -151,6 +175,32 @@ private extension BlockPlaceholderView {
         }
         guard let first = decoded.questions.first else { return nil }
         return (count: decoded.questions.count, first: first)
+    }
+
+    var keyTermsPreview: (count: Int, preview: [(term: String, definition: String)])? {
+        guard shouldRenderKeyTermsPreview, let data = block?.payload else { return nil }
+
+        struct KeyTermsPayload: Decodable {
+            struct Term: Decodable {
+                let term: String
+                let definition: String
+            }
+            let terms: [Term]
+        }
+
+        guard let decoded = try? JSONDecoder().decode(KeyTermsPayload.self, from: data) else {
+            return nil
+        }
+
+        let pairs = decoded.terms.map { item in
+            (
+                term: item.term.trimmingCharacters(in: .whitespacesAndNewlines),
+                definition: item.definition.trimmingCharacters(in: .whitespacesAndNewlines)
+            )
+        }.filter { !$0.term.isEmpty && !$0.definition.isEmpty }
+
+        guard !pairs.isEmpty else { return nil }
+        return (count: pairs.count, preview: Array(pairs.prefix(5)))
     }
 
     var statusLabel: String {
