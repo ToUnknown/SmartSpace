@@ -21,6 +21,10 @@ struct AIGenerationOrchestrator {
         let cards: [Card]
     }
 
+    struct QuizPayload: Codable {
+        let questions: [QuizQuestion]
+    }
+
     var contextBuilder = SpaceContextBuilder()
     var appleService: AIService = AppleIntelligenceService()
     var openAIService: AIService = OpenAIService()
@@ -95,6 +99,44 @@ struct AIGenerationOrchestrator {
             let payload = FlashcardsPayload(
                 cards: cards.map { FlashcardsPayload.Card(front: $0.front, back: $0.back) }
             )
+            block.payload = try JSONEncoder().encode(payload)
+            block.status = .ready
+            block.updatedAt = .now
+            block.errorMessage = nil
+        } catch {
+            block.status = .failed
+            block.updatedAt = .now
+            block.errorMessage = error.localizedDescription
+        }
+    }
+
+    @MainActor
+    func generateQuizIfNeeded(
+        for space: Space,
+        openAIStatus: OpenAIKeyManager.KeyStatus,
+        in modelContext: ModelContext
+    ) async {
+        guard let block = fetchBlock(for: space, blockType: .quiz, in: modelContext) else { return }
+        guard block.status == .idle else { return }
+
+        let context = contextBuilder.buildContext(for: space, in: modelContext)
+        guard !context.isEmpty else { return }
+
+        block.status = .generating
+        block.errorMessage = nil
+
+        let provider = effectiveProvider(for: space, openAIStatus: openAIStatus)
+
+        do {
+            let questions: [QuizQuestion]
+            switch provider {
+            case .appleIntelligence:
+                questions = try await appleService.generateQuiz(context: context)
+            case .openAI:
+                questions = try await openAIService.generateQuiz(context: context)
+            }
+
+            let payload = QuizPayload(questions: questions)
             block.payload = try JSONEncoder().encode(payload)
             block.status = .ready
             block.updatedAt = .now

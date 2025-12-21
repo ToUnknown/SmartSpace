@@ -13,6 +13,10 @@ protocol AIService {
     func generateFlashcards(
         context: String
     ) async throws -> [(front: String, back: String)]
+
+    func generateQuiz(
+        context: String
+    ) async throws -> [QuizQuestion]
 }
 
 

@@ -88,6 +88,13 @@ struct SpaceDetailView: View {
                 openAIStatus: openAIKeyManager.status,
                 in: modelContext
             )
+
+            // v0.11: Generate Quiz if needed (independent lifecycle).
+            await orchestrator.generateQuizIfNeeded(
+                for: space,
+                openAIStatus: openAIKeyManager.status,
+                in: modelContext
+            )
         }
     }
 }

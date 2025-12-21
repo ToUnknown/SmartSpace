@@ -54,6 +54,24 @@ struct BlockPlaceholderView: View {
                         }
                     }
                 }
+            } else if shouldRenderQuizPreview, let info = quizPreview {
+                VStack(alignment: .leading, spacing: 6) {
+                    Text("\(info.count) questions")
+                        .font(.subheadline.weight(.semibold))
+                        .foregroundStyle(.primary)
+
+                    Text(info.first.question)
+                        .font(.subheadline.weight(.semibold))
+                        .foregroundStyle(.primary)
+                        .lineLimit(2)
+
+                    ForEach(Array(info.first.options.prefix(5).enumerated()), id: \.offset) { _, option in
+                        Text(option)
+                            .font(.subheadline)
+                            .foregroundStyle(.secondary)
+                            .lineLimit(1)
+                    }
+                }
             } else if let subtitle {
                 Text(subtitle)
                     .font(.subheadline)
@@ -83,6 +101,10 @@ private extension BlockPlaceholderView {
 
     var shouldRenderFlashcardsPreview: Bool {
         blockType == .flashcards && effectiveStatus == .ready
+    }
+
+    var shouldRenderQuizPreview: Bool {
+        blockType == .quiz && effectiveStatus == .ready
     }
 
     var summaryText: String? {
@@ -116,6 +138,19 @@ private extension BlockPlaceholderView {
 
         guard !pairs.isEmpty else { return nil }
         return (count: pairs.count, preview: Array(pairs.prefix(2)))
+    }
+
+    var quizPreview: (count: Int, first: QuizQuestion)? {
+        guard shouldRenderQuizPreview, let data = block?.payload else { return nil }
+
+        struct QuizPayload: Decodable {
+            let questions: [QuizQuestion]
+        }
+        guard let decoded = try? JSONDecoder().decode(QuizPayload.self, from: data) else {
+            return nil
+        }
+        guard let first = decoded.questions.first else { return nil }
+        return (count: decoded.questions.count, first: first)
     }
 
     var statusLabel: String {

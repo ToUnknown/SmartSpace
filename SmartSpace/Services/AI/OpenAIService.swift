@@ -138,6 +138,69 @@ Return ONLY valid JSON with the shape:
         return cards
     }
 
+    func generateQuiz(context: String) async throws -> [QuizQuestion] {
+        let key = try keyStore.readKey()
+        guard let apiKey = key, !apiKey.isEmpty else {
+            throw OpenAIServiceError.missingAPIKey
+        }
+
+        guard let url = URL(string: "https://api.openai.com/v1/responses") else {
+            throw OpenAIServiceError.invalidResponse
+        }
+
+        var request = URLRequest(url: url)
+        request.httpMethod = "POST"
+        request.setValue("Bearer \(apiKey)", forHTTPHeaderField: "Authorization")
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+
+        let systemPrompt = """
+Create a multiple-choice quiz from the following content.
+Return ONLY valid JSON with the shape:
+{
+  "questions": [
+    { "question": "...", "options": ["A","B","C","D"], "correctIndex": 1 }
+  ]
+}
+Rules:
+- options length must be 3 to 5
+- correctIndex must be a valid index into options
+"""
+
+        let body: [String: Any] = [
+            "model": "gpt-5-mini",
+            "input": [
+                [
+                    "role": "system",
+                    "content": systemPrompt
+                ],
+                [
+                    "role": "user",
+                    "content": context
+                ]
+            ],
+            "max_output_tokens": 700
+        ]
+
+        request.httpBody = try JSONSerialization.data(withJSONObject: body)
+
+        let (data, response) = try await session.data(for: request)
+        guard let http = response as? HTTPURLResponse else {
+            throw OpenAIServiceError.invalidResponse
+        }
+        guard (200...299).contains(http.statusCode) else {
+            let message = decodeErrorMessage(from: data)
+                ?? HTTPURLResponse.localizedString(forStatusCode: http.statusCode)
+            throw OpenAIServiceError.apiError(message)
+        }
+
+        guard let text = decodeSummaryText(from: data) else {
+            throw OpenAIServiceError.invalidResponse
+        }
+
+        let questions = try decodeQuizJSON(from: text)
+        return questions
+    }
+
     private func decodeErrorMessage(from data: Data) -> String? {
         struct ErrorEnvelope: Decodable {
             struct APIError: Decodable { let message: String? }
@@ -211,6 +274,41 @@ Return ONLY valid JSON with the shape:
             throw OpenAIServiceError.invalidResponse
         }
         return pairs
+    }
+
+    private func decodeQuizJSON(from text: String) throws -> [QuizQuestion] {
+        struct QuizPayload: Decodable {
+            let questions: [QuizQuestion]
+        }
+
+        let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard let data = trimmed.data(using: .utf8) else {
+            throw OpenAIServiceError.invalidResponse
+        }
+        let decoded = try JSONDecoder().decode(QuizPayload.self, from: data)
+
+        let cleaned: [QuizQuestion] = decoded.questions.map { q in
+            QuizQuestion(
+                question: q.question.trimmingCharacters(in: .whitespacesAndNewlines),
+                options: q.options.map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }.filter { !$0.isEmpty },
+                correctIndex: q.correctIndex
+            )
+        }.filter { !$0.question.isEmpty }
+
+        guard !cleaned.isEmpty else {
+            throw OpenAIServiceError.invalidResponse
+        }
+
+        for q in cleaned {
+            if q.options.count < 3 || q.options.count > 5 {
+                throw OpenAIServiceError.invalidResponse
+            }
+            if q.correctIndex < 0 || q.correctIndex >= q.options.count {
+                throw OpenAIServiceError.invalidResponse
+            }
+        }
+
+        return cleaned
     }
 }
 

@@ -36,6 +36,25 @@ struct AppleIntelligenceService: AIService {
             (front: "What is SmartSpace (stub)?", back: "A study space that collects content and prepares structured outputs.")
         ]
     }
+
+    func generateQuiz(context: String) async throws -> [QuizQuestion] {
+        // TODO v0.11: Replace stub with real Apple Intelligence API call when stable/available.
+        let trimmed = context.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { return [] }
+
+        return [
+            QuizQuestion(
+                question: "What is the primary purpose of SmartSpace (stub)?",
+                options: ["Cooking", "Studying", "Travel", "Shopping"],
+                correctIndex: 1
+            ),
+            QuizQuestion(
+                question: "Which type of content can SmartSpace collect (stub)?",
+                options: ["Only PDFs", "Only text", "Files and pasted text", "Only images"],
+                correctIndex: 2
+            )
+        ]
+    }
 }
 
 
