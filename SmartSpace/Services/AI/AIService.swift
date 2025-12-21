@@ -21,6 +21,11 @@ protocol AIService {
     func generateKeyTerms(
         context: String
     ) async throws -> [(term: String, definition: String)]
+
+    func answerQuestion(
+        context: String,
+        question: String
+    ) async throws -> String
 }
 
 

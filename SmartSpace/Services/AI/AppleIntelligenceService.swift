@@ -66,6 +66,13 @@ struct AppleIntelligenceService: AIService {
             (term: "Space", definition: "A container for content and generated blocks tied to a specific learning template.")
         ]
     }
+
+    func answerQuestion(context: String, question: String) async throws -> String {
+        // TODO v0.13: Replace stub with real Apple Intelligence API call when stable/available.
+        let trimmedQuestion = question.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmedQuestion.isEmpty else { return "" }
+        return "(Stub) Answer based on the Space content: \(trimmedQuestion)"
+    }
 }
 
 

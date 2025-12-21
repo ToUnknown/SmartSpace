@@ -16,8 +16,10 @@ struct SpaceDetailView: View {
     var onOpenSettings: (() -> Void)? = nil
 
     @State private var isPresentingFileManager = false
+    @State private var questionInput: String = ""
 
     @Query private var generatedBlocks: [GeneratedBlock]
+    @Query private var questions: [SpaceQuestion]
     private let blockSeeder = BlockSeeder()
     private let orchestrator = AIGenerationOrchestrator()
 
@@ -35,6 +37,11 @@ struct SpaceDetailView: View {
             filter: #Predicate<GeneratedBlock> { $0.space.id == spaceId },
             sort: []
         )
+
+        _questions = Query(
+            filter: #Predicate<SpaceQuestion> { $0.space.id == spaceId },
+            sort: [SortDescriptor(\SpaceQuestion.createdAt, order: .forward)]
+        )
     }
 
     var body: some View {
@@ -47,6 +54,10 @@ struct SpaceDetailView: View {
                 Text("Using \(effective.displayName)")
                     .font(.footnote)
                     .foregroundStyle(.secondary)
+
+                if !questions.isEmpty {
+                    questionsList
+                }
 
                 dashboard
             }
@@ -102,6 +113,13 @@ struct SpaceDetailView: View {
                 openAIStatus: openAIKeyManager.status,
                 in: modelContext
             )
+
+            // v0.13: Answer any pending questions (idempotent).
+            await orchestrator.answerPendingQuestionsIfNeeded(
+                for: space,
+                openAIStatus: openAIKeyManager.status,
+                in: modelContext
+            )
         }
     }
 }
@@ -129,13 +147,14 @@ private extension SpaceDetailView {
     }
 
     var footer: some View {
-        HStack(spacing: 12) {
+        HStack(spacing: 10) {
             HStack(spacing: 8) {
                 Image(systemName: "sparkle.magnifyingglass")
                     .foregroundStyle(.secondary)
 
-                Text("Ask about this Space")
-                    .foregroundStyle(.secondary)
+                TextField("Ask about this Space…", text: $questionInput)
+                    .textInputAutocapitalization(.sentences)
+                    .autocorrectionDisabled()
 
                 Spacer(minLength: 0)
             }
@@ -144,18 +163,73 @@ private extension SpaceDetailView {
             .background(.secondary.opacity(0.12), in: Capsule())
 
             Button {
-                // TODO v0.5: search behavior
+                sendQuestion()
             } label: {
-                Image(systemName: "magnifyingglass")
-                    .frame(width: 44, height: 44)
+                Image(systemName: "arrow.up.circle.fill")
+                    .font(.title2)
             }
+            .disabled(questionInput.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
             .buttonStyle(.plain)
-            .background(.secondary.opacity(0.12), in: Circle())
         }
         .padding(.horizontal, 16)
         .padding(.top, 10)
         .padding(.bottom, 10)
         .background(.bar)
+    }
+
+    var questionsList: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            Text("Q&A")
+                .font(.headline)
+
+            ForEach(questions, id: \.id) { q in
+                VStack(alignment: .leading, spacing: 6) {
+                    Text(q.question)
+                        .font(.subheadline.weight(.semibold))
+
+                    switch q.status {
+                    case .pending:
+                        Text("Pending…")
+                            .font(.footnote)
+                            .foregroundStyle(.secondary)
+                    case .answering:
+                        Text("Answering…")
+                            .font(.footnote)
+                            .foregroundStyle(.secondary)
+                    case .answered:
+                        if let answer = q.answer {
+                            Text(answer)
+                                .font(.subheadline)
+                                .foregroundStyle(.secondary)
+                        }
+                    case .failed:
+                        let suffix = q.errorMessage.map { ": \($0)" } ?? ""
+                        Text("Failed\(suffix)")
+                            .font(.footnote)
+                            .foregroundStyle(.red)
+                    }
+                }
+                .padding(12)
+                .background(.secondary.opacity(0.08), in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+            }
+        }
+    }
+
+    func sendQuestion() {
+        let trimmed = questionInput.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { return }
+
+        let q = SpaceQuestion(space: space, question: trimmed)
+        modelContext.insert(q)
+        questionInput = ""
+
+        Task {
+            await orchestrator.answerIfNeeded(
+                question: q,
+                openAIStatus: openAIKeyManager.status,
+                in: modelContext
+            )
+        }
     }
 
     var fallbackBanner: some View {

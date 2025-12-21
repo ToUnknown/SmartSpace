@@ -196,6 +196,101 @@ struct AIGenerationOrchestrator {
         }
     }
 
+    // MARK: - Q&A (v0.13)
+
+    @MainActor
+    func answerIfNeeded(
+        question: SpaceQuestion,
+        openAIStatus: OpenAIKeyManager.KeyStatus,
+        in modelContext: ModelContext
+    ) async {
+        // Do not re-answer.
+        if question.status == .answered { return }
+        if question.status == .failed { return }
+
+        // If we crashed mid-flight, allow continuing.
+        if question.status == .answering, question.answer != nil {
+            question.status = .answered
+            return
+        }
+
+        guard question.status == .pending || question.status == .answering else { return }
+
+        let trimmedQ = question.question.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmedQ.isEmpty else {
+            question.status = .failed
+            question.errorMessage = "Question is empty."
+            return
+        }
+
+        // Build context from Space files (and keep it deterministic).
+        let space = question.space
+        let context = contextBuilder.buildContext(for: space, in: modelContext)
+        guard !context.isEmpty else {
+            question.status = .failed
+            question.errorMessage = "No extracted content available for this Space yet."
+            return
+        }
+
+        question.status = .answering
+        question.errorMessage = nil
+
+        let provider = effectiveProvider(for: space, openAIStatus: openAIStatus)
+
+        do {
+            let answer: String
+            switch provider {
+            case .appleIntelligence:
+                answer = try await appleService.answerQuestion(context: context, question: trimmedQ)
+            case .openAI:
+                answer = try await openAIService.answerQuestion(context: context, question: trimmedQ)
+            }
+
+            let trimmedA = answer.trimmingCharacters(in: .whitespacesAndNewlines)
+            guard !trimmedA.isEmpty else {
+                question.status = .failed
+                question.errorMessage = "Answer was empty."
+                return
+            }
+
+            question.answer = trimmedA
+            question.status = .answered
+            question.errorMessage = nil
+        } catch {
+            question.status = .failed
+            question.errorMessage = error.localizedDescription
+        }
+    }
+
+    @MainActor
+    func answerPendingQuestionsIfNeeded(
+        for space: Space,
+        openAIStatus: OpenAIKeyManager.KeyStatus,
+        in modelContext: ModelContext
+    ) async {
+        let spaceId = space.id
+        let all: [SpaceQuestion]
+        do {
+            all = try modelContext.fetch(
+                FetchDescriptor<SpaceQuestion>(
+                    predicate: #Predicate { $0.space.id == spaceId },
+                    sortBy: [SortDescriptor(\SpaceQuestion.createdAt, order: .forward)]
+                )
+            )
+        } catch {
+            #if DEBUG
+            print("AIGenerationOrchestrator: failed to fetch SpaceQuestion: \(error)")
+            #endif
+            return
+        }
+
+        for q in all {
+            if q.status == .pending || (q.status == .answering && q.answer == nil) {
+                await answerIfNeeded(question: q, openAIStatus: openAIStatus, in: modelContext)
+            }
+        }
+    }
+
     @MainActor
     private func fetchSummaryBlock(for space: Space, in modelContext: ModelContext) -> GeneratedBlock? {
         fetchBlock(for: space, blockType: .summary, in: modelContext)
