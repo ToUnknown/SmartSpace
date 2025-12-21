@@ -16,6 +16,7 @@ struct BlockPlaceholderView: View {
     var minHeight: CGFloat = 96
 
     @State private var isPresentingFlashcardsStudy = false
+    @State private var isPresentingQuizStudy = false
 
     var body: some View {
         let content = VStack(alignment: .leading, spacing: 8) {
@@ -119,6 +120,15 @@ struct BlockPlaceholderView: View {
                 .fullScreenCover(isPresented: $isPresentingFlashcardsStudy) {
                     FlashcardsStudyView(cards: flashcardsDeck ?? [])
                 }
+        } else if isQuizInteractive {
+            content
+                .contentShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
+                .onTapGesture {
+                    isPresentingQuizStudy = true
+                }
+                .fullScreenCover(isPresented: $isPresentingQuizStudy) {
+                    QuizStudyView(questions: quizDeck ?? [])
+                }
         } else {
             content
         }
@@ -144,6 +154,10 @@ private extension BlockPlaceholderView {
 
     var shouldRenderQuizPreview: Bool {
         blockType == .quiz && effectiveStatus == .ready
+    }
+
+    var isQuizInteractive: Bool {
+        blockType == .quiz && effectiveStatus == .ready && quizDeck != nil
     }
 
     var shouldRenderKeyTermsPreview: Bool {
@@ -217,6 +231,19 @@ private extension BlockPlaceholderView {
         }
         guard let first = decoded.questions.first else { return nil }
         return (count: decoded.questions.count, first: first)
+    }
+
+    var quizDeck: [QuizQuestion]? {
+        guard shouldRenderQuizPreview, let data = block?.payload else { return nil }
+
+        struct QuizPayload: Decodable {
+            let questions: [QuizQuestion]
+        }
+        guard let decoded = try? JSONDecoder().decode(QuizPayload.self, from: data) else {
+            return nil
+        }
+        let cleaned = decoded.questions.filter { !$0.question.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty }
+        return cleaned.isEmpty ? nil : cleaned
     }
 
     var keyTermsPreview: (count: Int, preview: [(term: String, definition: String)])? {
