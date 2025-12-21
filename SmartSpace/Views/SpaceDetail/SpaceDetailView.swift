@@ -9,11 +9,32 @@ import SwiftUI
 import SwiftData
 
 struct SpaceDetailView: View {
+    @Environment(\.modelContext) private var modelContext
+
     let space: Space
     let openAIKeyManager: OpenAIKeyManager
     var onOpenSettings: (() -> Void)? = nil
 
     @State private var isPresentingFileManager = false
+
+    @Query private var generatedBlocks: [GeneratedBlock]
+    private let blockSeeder = BlockSeeder()
+
+    init(
+        space: Space,
+        openAIKeyManager: OpenAIKeyManager,
+        onOpenSettings: (() -> Void)? = nil
+    ) {
+        self.space = space
+        self.openAIKeyManager = openAIKeyManager
+        self.onOpenSettings = onOpenSettings
+
+        let spaceId = space.id
+        _generatedBlocks = Query(
+            filter: #Predicate<GeneratedBlock> { $0.space.id == spaceId },
+            sort: []
+        )
+    }
 
     var body: some View {
         ScrollView {
@@ -49,6 +70,10 @@ struct SpaceDetailView: View {
         .safeAreaInset(edge: .bottom) {
             footer
         }
+        .task {
+            // v0.8: Deterministically ensure blocks exist (create missing only).
+            blockSeeder.seedBlocksIfNeeded(for: space, in: modelContext)
+        }
     }
 }
 
@@ -64,7 +89,11 @@ private extension SpaceDetailView {
     var dashboard: some View {
         LazyVGrid(columns: columns, spacing: 12) {
             ForEach(dashboardBlocks) { item in
-                BlockPlaceholderView(blockType: item.blockType, minHeight: item.minHeight)
+                BlockPlaceholderView(
+                    blockType: item.blockType,
+                    block: generatedBlock(for: item.blockType),
+                    minHeight: item.minHeight
+                )
                     .gridCellColumns(item.gridColumns)
             }
         }
@@ -156,13 +185,19 @@ private extension SpaceDetailView {
             ]
         }
     }
+
+    func generatedBlock(for type: BlockType) -> GeneratedBlock? {
+        // Compare by rawValue for stability across SwiftData enum backing.
+        generatedBlocks.first { $0.blockType.rawValue == type.rawValue }
+    }
 }
 
 private struct DashboardBlock: Identifiable {
-    let id = UUID()
     let blockType: BlockType
     let gridColumns: Int
     let minHeight: CGFloat
+
+    var id: String { blockType.rawValue }
 
     static func full(_ type: BlockType) -> Self {
         DashboardBlock(blockType: type, gridColumns: 2, minHeight: 120)
@@ -175,7 +210,7 @@ private struct DashboardBlock: Identifiable {
 
 #Preview("Language Learning (preview-only)") {
     let configuration = ModelConfiguration(isStoredInMemoryOnly: true)
-    let container = try! ModelContainer(for: Space.self, configurations: configuration)
+    let container = try! ModelContainer(for: Space.self, SpaceFile.self, GeneratedBlock.self, configurations: configuration)
     let context = container.mainContext
 
     let space = Space(name: "Spanish A1", templateType: .languageLearning, aiProvider: .openAI)

@@ -14,6 +14,7 @@ struct SmartSpaceApp: App {
         let schema = Schema([
             Space.self,
             SpaceFile.self,
+            GeneratedBlock.self,
         ])
         let modelConfiguration = ModelConfiguration(schema: schema, isStoredInMemoryOnly: false)
 
