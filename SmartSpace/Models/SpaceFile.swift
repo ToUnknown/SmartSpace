@@ -13,6 +13,13 @@ enum SourceType: String, Codable {
     case paste
 }
 
+enum ExtractionStatus: String, Codable {
+    case pending
+    case extracting
+    case completed
+    case failed
+}
+
 @Model
 final class SpaceFile {
     var id: UUID
@@ -29,6 +36,10 @@ final class SpaceFile {
     var storedText: String?
     var storedFileURL: URL?
 
+    // Extraction (v0.7)
+    var extractedText: String?
+    var extractionStatus: ExtractionStatus = ExtractionStatus.pending
+
     init(
         space: Space,
         sourceType: SourceType,
@@ -43,6 +54,16 @@ final class SpaceFile {
         self.displayName = displayName
         self.storedText = storedText
         self.storedFileURL = storedFileURL
+
+        switch sourceType {
+        case .paste:
+            // Do NOT overwrite user-pasted text; mirror it into extractedText for downstream pipelines.
+            self.extractedText = storedText
+            self.extractionStatus = ExtractionStatus.completed
+        case .fileImport:
+            self.extractedText = nil
+            self.extractionStatus = ExtractionStatus.pending
+        }
     }
 }
 

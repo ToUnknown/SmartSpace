@@ -9,6 +9,8 @@ import SwiftUI
 import SwiftData
 
 struct ContentView: View {
+    @Environment(\.modelContext) private var modelContext
+
     @State private var isPresentingCreateSpaceSheet = false
     @State private var isPresentingSettings = false
     @State private var openAIKeyManager = OpenAIKeyManager()
@@ -59,6 +61,10 @@ struct ContentView: View {
             NavigationStack {
                 SettingsView(openAIKeyManager: openAIKeyManager)
             }
+        }
+        .task {
+            // v0.7: On launch, extract text for any pending imported files (runs once per file via status gating).
+            TextExtractionService().processPending(in: modelContext)
         }
         //Search + Create new buttton
     }

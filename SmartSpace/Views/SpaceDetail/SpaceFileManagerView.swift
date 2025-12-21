@@ -19,6 +19,7 @@ struct SpaceFileManagerView: View {
     @State private var isPresentingPasteText = false
 
     @Query private var files: [SpaceFile]
+    private let extractionService = TextExtractionService()
 
     init(space: Space) {
         self.space = space
@@ -62,6 +63,10 @@ struct SpaceFileManagerView: View {
                     }
                 }
             }
+        }
+        .task {
+            // Trigger pending extraction when opening the file manager (runs once per file via status gating).
+            extractionService.processPending(in: modelContext)
         }
         .fileImporter(
             isPresented: $isPresentingFileImporter,
@@ -119,7 +124,13 @@ private extension SpaceFileManagerView {
                 Text(file.displayName)
                     .font(.headline)
 
-                Text(file.sourceType.label)
+                HStack(spacing: 8) {
+                    Text(file.sourceType.label)
+                    if file.sourceType == .fileImport {
+                        Text("• \(file.extractionStatus.label)")
+                            .foregroundStyle(file.extractionStatus.color)
+                    }
+                }
                     .font(.subheadline)
                     .foregroundStyle(.secondary)
             }
@@ -202,6 +213,9 @@ private extension SpaceFileManagerView {
                 storedFileURL: destinationURL
             )
             modelContext.insert(newFile)
+
+            // Trigger extraction immediately for newly imported files.
+            extractionService.extractIfNeeded(newFile, in: modelContext)
         } catch {
             // Intentionally no alerts/logging in v0.6. (Collection-only, keep UX simple.)
         }
@@ -225,6 +239,26 @@ private extension SourceType {
         switch self {
         case .fileImport: return "File"
         case .paste: return "Text"
+        }
+    }
+}
+
+private extension ExtractionStatus {
+    var label: String {
+        switch self {
+        case .pending: return "Pending"
+        case .extracting: return "Extracting"
+        case .completed: return "Completed"
+        case .failed: return "Failed"
+        }
+    }
+
+    var color: Color {
+        switch self {
+        case .pending: return .secondary
+        case .extracting: return .secondary
+        case .completed: return .secondary
+        case .failed: return .red
         }
     }
 }
