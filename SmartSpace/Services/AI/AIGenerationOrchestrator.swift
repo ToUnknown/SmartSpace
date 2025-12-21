@@ -34,8 +34,6 @@ struct AIGenerationOrchestrator {
     }
 
     var contextBuilder = SpaceContextBuilder()
-    var appleService: AIService = AppleIntelligenceService()
-    var openAIService: AIService = OpenAIService()
 
     @MainActor
     func generateSummaryIfNeeded(
@@ -43,38 +41,70 @@ struct AIGenerationOrchestrator {
         openAIStatus: OpenAIKeyManager.KeyStatus,
         in modelContext: ModelContext
     ) async {
-        // Find the Summary block for this space
+        let provider = effectiveProvider(for: space, openAIStatus: openAIStatus)
         guard let summaryBlock = fetchSummaryBlock(for: space, in: modelContext) else { return }
-
-        // Never generate twice; never overwrite.
         guard summaryBlock.status == .idle else { return }
 
         let context = contextBuilder.buildContext(for: space, in: modelContext)
         guard !context.isEmpty else { return }
 
-        summaryBlock.status = .generating
-        summaryBlock.errorMessage = nil
+        let blockId = summaryBlock.id
+        ModelMutationCoordinator.updateGeneratedBlock(
+            generatedBlockId: blockId,
+            status: .generating,
+            payload: summaryBlock.payload,
+            errorMessage: nil,
+            touchUpdatedAt: true,
+            in: modelContext
+        )
 
-        let provider = effectiveProvider(for: space, openAIStatus: openAIStatus)
-
-        do {
-            let summaryText: String
-            switch provider {
-            case .appleIntelligence:
-                summaryText = try await appleService.generateSummary(context: context)
-            case .openAI:
-                summaryText = try await openAIService.generateSummary(context: context)
+        let result: Result<String, Error> = await Task.detached(priority: .userInitiated) {
+            do {
+                switch provider {
+                case .appleIntelligence:
+                    let text = try await AppleIntelligenceService().generateSummary(context: context)
+                    return .success(text)
+                case .openAI:
+                    let text = try await OpenAIService().generateSummary(context: context)
+                    return .success(text)
+                }
+            } catch {
+                return .failure(error)
             }
+        }.value
 
-            let payload = SummaryPayload(text: summaryText)
-            summaryBlock.payload = try JSONEncoder().encode(payload)
-            summaryBlock.status = .ready
-            summaryBlock.updatedAt = .now
-            summaryBlock.errorMessage = nil
-        } catch {
-            summaryBlock.status = .failed
-            summaryBlock.updatedAt = .now
-            summaryBlock.errorMessage = error.localizedDescription
+        switch result {
+        case .success(let summaryText):
+            do {
+                let payload = SummaryPayload(text: summaryText)
+                let data = try JSONEncoder().encode(payload)
+                ModelMutationCoordinator.updateGeneratedBlock(
+                    generatedBlockId: blockId,
+                    status: .ready,
+                    payload: data,
+                    errorMessage: nil,
+                    touchUpdatedAt: true,
+                    in: modelContext
+                )
+            } catch {
+                ModelMutationCoordinator.updateGeneratedBlock(
+                    generatedBlockId: blockId,
+                    status: .failed,
+                    payload: nil,
+                    errorMessage: "Couldn’t save summary.",
+                    touchUpdatedAt: true,
+                    in: modelContext
+                )
+            }
+        case .failure(let error):
+            ModelMutationCoordinator.updateGeneratedBlock(
+                generatedBlockId: blockId,
+                status: .failed,
+                payload: nil,
+                errorMessage: error.localizedDescription,
+                touchUpdatedAt: true,
+                in: modelContext
+            )
         }
     }
 
@@ -84,37 +114,72 @@ struct AIGenerationOrchestrator {
         openAIStatus: OpenAIKeyManager.KeyStatus,
         in modelContext: ModelContext
     ) async {
+        let provider = effectiveProvider(for: space, openAIStatus: openAIStatus)
         guard let block = fetchBlock(for: space, blockType: .flashcards, in: modelContext) else { return }
         guard block.status == .idle else { return }
 
         let context = contextBuilder.buildContext(for: space, in: modelContext)
         guard !context.isEmpty else { return }
 
-        block.status = .generating
-        block.errorMessage = nil
+        let blockId = block.id
+        ModelMutationCoordinator.updateGeneratedBlock(
+            generatedBlockId: blockId,
+            status: .generating,
+            payload: block.payload,
+            errorMessage: nil,
+            touchUpdatedAt: true,
+            in: modelContext
+        )
 
-        let provider = effectiveProvider(for: space, openAIStatus: openAIStatus)
-
-        do {
-            let cards: [(front: String, back: String)]
-            switch provider {
-            case .appleIntelligence:
-                cards = try await appleService.generateFlashcards(context: context)
-            case .openAI:
-                cards = try await openAIService.generateFlashcards(context: context)
+        let result: Result<[(front: String, back: String)], Error> = await Task.detached(priority: .userInitiated) {
+            do {
+                switch provider {
+                case .appleIntelligence:
+                    let cards = try await AppleIntelligenceService().generateFlashcards(context: context)
+                    return .success(cards)
+                case .openAI:
+                    let cards = try await OpenAIService().generateFlashcards(context: context)
+                    return .success(cards)
+                }
+            } catch {
+                return .failure(error)
             }
+        }.value
 
-            let payload = FlashcardsPayload(
-                cards: cards.map { FlashcardsPayload.Card(front: $0.front, back: $0.back) }
+        switch result {
+        case .success(let cards):
+            do {
+                let payload = FlashcardsPayload(
+                    cards: cards.map { FlashcardsPayload.Card(front: $0.front, back: $0.back) }
+                )
+                let data = try JSONEncoder().encode(payload)
+                ModelMutationCoordinator.updateGeneratedBlock(
+                    generatedBlockId: blockId,
+                    status: .ready,
+                    payload: data,
+                    errorMessage: nil,
+                    touchUpdatedAt: true,
+                    in: modelContext
+                )
+            } catch {
+                ModelMutationCoordinator.updateGeneratedBlock(
+                    generatedBlockId: blockId,
+                    status: .failed,
+                    payload: nil,
+                    errorMessage: "Couldn’t save flashcards.",
+                    touchUpdatedAt: true,
+                    in: modelContext
+                )
+            }
+        case .failure(let error):
+            ModelMutationCoordinator.updateGeneratedBlock(
+                generatedBlockId: blockId,
+                status: .failed,
+                payload: nil,
+                errorMessage: error.localizedDescription,
+                touchUpdatedAt: true,
+                in: modelContext
             )
-            block.payload = try JSONEncoder().encode(payload)
-            block.status = .ready
-            block.updatedAt = .now
-            block.errorMessage = nil
-        } catch {
-            block.status = .failed
-            block.updatedAt = .now
-            block.errorMessage = error.localizedDescription
         }
     }
 
@@ -124,35 +189,70 @@ struct AIGenerationOrchestrator {
         openAIStatus: OpenAIKeyManager.KeyStatus,
         in modelContext: ModelContext
     ) async {
+        let provider = effectiveProvider(for: space, openAIStatus: openAIStatus)
         guard let block = fetchBlock(for: space, blockType: .quiz, in: modelContext) else { return }
         guard block.status == .idle else { return }
 
         let context = contextBuilder.buildContext(for: space, in: modelContext)
         guard !context.isEmpty else { return }
 
-        block.status = .generating
-        block.errorMessage = nil
+        let blockId = block.id
+        ModelMutationCoordinator.updateGeneratedBlock(
+            generatedBlockId: blockId,
+            status: .generating,
+            payload: block.payload,
+            errorMessage: nil,
+            touchUpdatedAt: true,
+            in: modelContext
+        )
 
-        let provider = effectiveProvider(for: space, openAIStatus: openAIStatus)
-
-        do {
-            let questions: [QuizQuestion]
-            switch provider {
-            case .appleIntelligence:
-                questions = try await appleService.generateQuiz(context: context)
-            case .openAI:
-                questions = try await openAIService.generateQuiz(context: context)
+        let result: Result<[QuizQuestion], Error> = await Task.detached(priority: .userInitiated) {
+            do {
+                switch provider {
+                case .appleIntelligence:
+                    let questions = try await AppleIntelligenceService().generateQuiz(context: context)
+                    return .success(questions)
+                case .openAI:
+                    let questions = try await OpenAIService().generateQuiz(context: context)
+                    return .success(questions)
+                }
+            } catch {
+                return .failure(error)
             }
+        }.value
 
-            let payload = QuizPayload(questions: questions)
-            block.payload = try JSONEncoder().encode(payload)
-            block.status = .ready
-            block.updatedAt = .now
-            block.errorMessage = nil
-        } catch {
-            block.status = .failed
-            block.updatedAt = .now
-            block.errorMessage = error.localizedDescription
+        switch result {
+        case .success(let questions):
+            do {
+                let payload = QuizPayload(questions: questions)
+                let data = try JSONEncoder().encode(payload)
+                ModelMutationCoordinator.updateGeneratedBlock(
+                    generatedBlockId: blockId,
+                    status: .ready,
+                    payload: data,
+                    errorMessage: nil,
+                    touchUpdatedAt: true,
+                    in: modelContext
+                )
+            } catch {
+                ModelMutationCoordinator.updateGeneratedBlock(
+                    generatedBlockId: blockId,
+                    status: .failed,
+                    payload: nil,
+                    errorMessage: "Couldn’t save quiz.",
+                    touchUpdatedAt: true,
+                    in: modelContext
+                )
+            }
+        case .failure(let error):
+            ModelMutationCoordinator.updateGeneratedBlock(
+                generatedBlockId: blockId,
+                status: .failed,
+                payload: nil,
+                errorMessage: error.localizedDescription,
+                touchUpdatedAt: true,
+                in: modelContext
+            )
         }
     }
 
@@ -162,37 +262,72 @@ struct AIGenerationOrchestrator {
         openAIStatus: OpenAIKeyManager.KeyStatus,
         in modelContext: ModelContext
     ) async {
+        let provider = effectiveProvider(for: space, openAIStatus: openAIStatus)
         guard let block = fetchBlock(for: space, blockType: .keyTerms, in: modelContext) else { return }
         guard block.status == .idle else { return }
 
         let context = contextBuilder.buildContext(for: space, in: modelContext)
         guard !context.isEmpty else { return }
 
-        block.status = .generating
-        block.errorMessage = nil
+        let blockId = block.id
+        ModelMutationCoordinator.updateGeneratedBlock(
+            generatedBlockId: blockId,
+            status: .generating,
+            payload: block.payload,
+            errorMessage: nil,
+            touchUpdatedAt: true,
+            in: modelContext
+        )
 
-        let provider = effectiveProvider(for: space, openAIStatus: openAIStatus)
-
-        do {
-            let terms: [(term: String, definition: String)]
-            switch provider {
-            case .appleIntelligence:
-                terms = try await appleService.generateKeyTerms(context: context)
-            case .openAI:
-                terms = try await openAIService.generateKeyTerms(context: context)
+        let result: Result<[(term: String, definition: String)], Error> = await Task.detached(priority: .userInitiated) {
+            do {
+                switch provider {
+                case .appleIntelligence:
+                    let terms = try await AppleIntelligenceService().generateKeyTerms(context: context)
+                    return .success(terms)
+                case .openAI:
+                    let terms = try await OpenAIService().generateKeyTerms(context: context)
+                    return .success(terms)
+                }
+            } catch {
+                return .failure(error)
             }
+        }.value
 
-            let payload = KeyTermsPayload(
-                terms: terms.map { KeyTermsPayload.Term(term: $0.term, definition: $0.definition) }
+        switch result {
+        case .success(let terms):
+            do {
+                let payload = KeyTermsPayload(
+                    terms: terms.map { KeyTermsPayload.Term(term: $0.term, definition: $0.definition) }
+                )
+                let data = try JSONEncoder().encode(payload)
+                ModelMutationCoordinator.updateGeneratedBlock(
+                    generatedBlockId: blockId,
+                    status: .ready,
+                    payload: data,
+                    errorMessage: nil,
+                    touchUpdatedAt: true,
+                    in: modelContext
+                )
+            } catch {
+                ModelMutationCoordinator.updateGeneratedBlock(
+                    generatedBlockId: blockId,
+                    status: .failed,
+                    payload: nil,
+                    errorMessage: "Couldn’t save key terms.",
+                    touchUpdatedAt: true,
+                    in: modelContext
+                )
+            }
+        case .failure(let error):
+            ModelMutationCoordinator.updateGeneratedBlock(
+                generatedBlockId: blockId,
+                status: .failed,
+                payload: nil,
+                errorMessage: error.localizedDescription,
+                touchUpdatedAt: true,
+                in: modelContext
             )
-            block.payload = try JSONEncoder().encode(payload)
-            block.status = .ready
-            block.updatedAt = .now
-            block.errorMessage = nil
-        } catch {
-            block.status = .failed
-            block.updatedAt = .now
-            block.errorMessage = error.localizedDescription
         }
     }
 
@@ -204,13 +339,20 @@ struct AIGenerationOrchestrator {
         openAIStatus: OpenAIKeyManager.KeyStatus,
         in modelContext: ModelContext
     ) async {
+        let qId = question.id
         // Do not re-answer.
         if question.status == .answered { return }
         if question.status == .failed { return }
 
         // If we crashed mid-flight, allow continuing.
         if question.status == .answering, question.answer != nil {
-            question.status = .answered
+            ModelMutationCoordinator.updateSpaceQuestion(
+                spaceQuestionId: qId,
+                status: .answered,
+                answer: question.answer,
+                errorMessage: nil,
+                in: modelContext
+            )
             return
         }
 
@@ -218,8 +360,13 @@ struct AIGenerationOrchestrator {
 
         let trimmedQ = question.question.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmedQ.isEmpty else {
-            question.status = .failed
-            question.errorMessage = "Question is empty."
+            ModelMutationCoordinator.updateSpaceQuestion(
+                spaceQuestionId: qId,
+                status: .failed,
+                answer: nil,
+                errorMessage: "Question is empty.",
+                in: modelContext
+            )
             return
         }
 
@@ -227,38 +374,69 @@ struct AIGenerationOrchestrator {
         let space = question.space
         let context = contextBuilder.buildContext(for: space, in: modelContext)
         guard !context.isEmpty else {
-            question.status = .failed
-            question.errorMessage = "No extracted content available for this Space yet."
+            ModelMutationCoordinator.updateSpaceQuestion(
+                spaceQuestionId: qId,
+                status: .failed,
+                answer: nil,
+                errorMessage: "No extracted content available for this Space yet.",
+                in: modelContext
+            )
             return
         }
 
-        question.status = .answering
-        question.errorMessage = nil
-
         let provider = effectiveProvider(for: space, openAIStatus: openAIStatus)
+        ModelMutationCoordinator.updateSpaceQuestion(
+            spaceQuestionId: qId,
+            status: .answering,
+            answer: nil,
+            errorMessage: nil,
+            in: modelContext
+        )
 
-        do {
-            let answer: String
-            switch provider {
-            case .appleIntelligence:
-                answer = try await appleService.answerQuestion(context: context, question: trimmedQ)
-            case .openAI:
-                answer = try await openAIService.answerQuestion(context: context, question: trimmedQ)
+        let result: Result<String, Error> = await Task.detached(priority: .userInitiated) {
+            do {
+                switch provider {
+                case .appleIntelligence:
+                    let answer = try await AppleIntelligenceService().answerQuestion(context: context, question: trimmedQ)
+                    return .success(answer)
+                case .openAI:
+                    let answer = try await OpenAIService().answerQuestion(context: context, question: trimmedQ)
+                    return .success(answer)
+                }
+            } catch {
+                return .failure(error)
             }
+        }.value
 
-            let trimmedA = answer.trimmingCharacters(in: .whitespacesAndNewlines)
+        switch result {
+        case .success(let answer):
+            let trimmedA = answer.trimmingCharacters(in: CharacterSet.whitespacesAndNewlines)
             guard !trimmedA.isEmpty else {
-                question.status = .failed
-                question.errorMessage = "Answer was empty."
+                ModelMutationCoordinator.updateSpaceQuestion(
+                    spaceQuestionId: qId,
+                    status: .failed,
+                    answer: nil,
+                    errorMessage: "Answer was empty.",
+                    in: modelContext
+                )
                 return
             }
 
-            question.answer = trimmedA
-            question.status = .answered
-            question.errorMessage = nil
-        } catch {
-            question.status = .failed
-            question.errorMessage = error.localizedDescription
+            ModelMutationCoordinator.updateSpaceQuestion(
+                spaceQuestionId: qId,
+                status: .answered,
+                answer: trimmedA,
+                errorMessage: nil,
+                in: modelContext
+            )
+        case .failure(let error):
+            ModelMutationCoordinator.updateSpaceQuestion(
+                spaceQuestionId: qId,
+                status: .failed,
+                answer: nil,
+                errorMessage: error.localizedDescription,
+                in: modelContext
+            )
         }
     }
 

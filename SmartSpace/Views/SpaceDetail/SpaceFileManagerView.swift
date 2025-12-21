@@ -66,7 +66,7 @@ struct SpaceFileManagerView: View {
         }
         .task {
             // Trigger pending extraction when opening the file manager (runs once per file via status gating).
-            extractionService.processPending(in: modelContext)
+            await extractionService.processPending(in: modelContext)
         }
         .fileImporter(
             isPresented: $isPresentingFileImporter,
@@ -155,7 +155,7 @@ private extension SpaceFileManagerView {
         if let url = file.storedFileURL {
             try? FileManager.default.removeItem(at: url)
         }
-        modelContext.delete(file)
+        ModelMutationCoordinator.delete(file, in: modelContext)
     }
 
     func addPastedText(_ text: String) {
@@ -169,7 +169,7 @@ private extension SpaceFileManagerView {
             storedText: trimmed,
             storedFileURL: nil
         )
-        modelContext.insert(newFile)
+        ModelMutationCoordinator.insert(newFile, in: modelContext)
     }
 
     func handleImport(_ result: Result<[URL], Error>) {
@@ -212,10 +212,12 @@ private extension SpaceFileManagerView {
                 storedText: nil,
                 storedFileURL: destinationURL
             )
-            modelContext.insert(newFile)
+            ModelMutationCoordinator.insert(newFile, in: modelContext)
 
             // Trigger extraction immediately for newly imported files.
-            extractionService.extractIfNeeded(newFile, in: modelContext)
+            Task { @MainActor in
+                await extractionService.extractIfNeeded(newFile, in: modelContext)
+            }
         } catch {
             // Intentionally no alerts/logging in v0.6. (Collection-only, keep UX simple.)
         }

@@ -33,7 +33,7 @@ struct BlockSeeder {
         let existingTypes = Set(existing.map { $0.blockType.rawValue })
         for type in required {
             if existingTypes.contains(type.rawValue) { continue }
-            modelContext.insert(GeneratedBlock(space: space, blockType: type))
+            ModelMutationCoordinator.insert(GeneratedBlock(space: space, blockType: type), in: modelContext)
         }
     }
 

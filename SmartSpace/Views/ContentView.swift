@@ -64,7 +64,7 @@ struct ContentView: View {
         }
         .task {
             // v0.7: On launch, extract text for any pending imported files (runs once per file via status gating).
-            TextExtractionService().processPending(in: modelContext)
+            await TextExtractionService().processPending(in: modelContext)
         }
         //Search + Create new buttton
     }

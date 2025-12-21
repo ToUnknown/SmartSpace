@@ -124,7 +124,7 @@ private extension CreateSpaceSheet {
             templateType: templateType,
             aiProvider: providerToPersist
         )
-        modelContext.insert(newSpace)
+        ModelMutationCoordinator.insert(newSpace, in: modelContext)
         dismiss()
     }
 }

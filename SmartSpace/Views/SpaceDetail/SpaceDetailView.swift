@@ -235,7 +235,7 @@ private extension SpaceDetailView {
         guard !trimmed.isEmpty else { return }
 
         let q = SpaceQuestion(space: space, question: trimmed)
-        modelContext.insert(q)
+        ModelMutationCoordinator.insert(q, in: modelContext)
         questionInput = ""
         isAskFieldFocused = false
 

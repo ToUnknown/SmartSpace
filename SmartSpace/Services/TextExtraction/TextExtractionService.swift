@@ -12,12 +12,16 @@ import PDFKit
 struct TextExtractionService {
     /// Triggers extraction for a single file if needed. Updates SwiftData fields and persists results.
     @MainActor
-    func extractIfNeeded(_ file: SpaceFile, in modelContext: ModelContext) {
+    func extractIfNeeded(_ file: SpaceFile, in modelContext: ModelContext) async {
         // Pasted text is always considered complete.
         if file.sourceType == .paste {
             if file.extractionStatus != .completed {
-                file.extractedText = file.storedText
-                file.extractionStatus = .completed
+                ModelMutationCoordinator.updateSpaceFileExtraction(
+                    spaceFileId: file.id,
+                    extractedText: file.storedText,
+                    status: .completed,
+                    in: modelContext
+                )
             }
             return
         }
@@ -25,60 +29,68 @@ struct TextExtractionService {
         guard file.sourceType == .fileImport else { return }
         guard file.extractionStatus == .pending else { return }
         guard let url = file.storedFileURL else {
-            file.extractionStatus = .failed
+            ModelMutationCoordinator.updateSpaceFileExtraction(
+                spaceFileId: file.id,
+                extractedText: nil,
+                status: .failed,
+                in: modelContext
+            )
             return
         }
 
-        file.extractionStatus = .extracting
         let fileId = file.id
+        ModelMutationCoordinator.updateSpaceFileExtraction(
+            spaceFileId: fileId,
+            extractedText: nil,
+            status: .extracting,
+            in: modelContext
+        )
 
-        DispatchQueue.global(qos: .utility).async {
-            let result: Result<String, Error> = Result { try TextExtractor.extractPlainText(from: url) }
+        // Do parsing off-main. Only apply model updates back on the MainActor.
+        let result = await Task.detached(priority: .utility) {
+            Result<String, Error> { try TextExtractor.extractPlainText(from: url) }
+        }.value
 
-            DispatchQueue.main.async {
-                do {
-                    let fetched = try modelContext.fetch(
-                        FetchDescriptor<SpaceFile>(
-                            predicate: #Predicate { $0.id == fileId }
-                        )
-                    )
-                    guard let current = fetched.first else { return }
-
-                    switch result {
-                    case .success(let text):
-                        current.extractedText = text
-                        current.extractionStatus = .completed
-                    case .failure(let error):
-                        #if DEBUG
-                        print("TextExtractionService: extraction failed for \(url.lastPathComponent): \(error)")
-                        #endif
-                        current.extractedText = nil
-                        current.extractionStatus = .failed
-                    }
-                } catch {
-                    #if DEBUG
-                    print("TextExtractionService: failed to refetch SpaceFile for update: \(error)")
-                    #endif
-                }
-            }
+        switch result {
+        case .success(let text):
+            ModelMutationCoordinator.updateSpaceFileExtraction(
+                spaceFileId: fileId,
+                extractedText: text,
+                status: .completed,
+                in: modelContext
+            )
+        case .failure(let error):
+            #if DEBUG
+            print("TextExtractionService: extraction failed for \(url.lastPathComponent): \(error)")
+            #endif
+            ModelMutationCoordinator.updateSpaceFileExtraction(
+                spaceFileId: fileId,
+                extractedText: nil,
+                status: .failed,
+                in: modelContext
+            )
         }
     }
 
     /// Scans the store for pending work. Call on app launch and/or when opening the file manager.
     @MainActor
-    func processPending(in modelContext: ModelContext) {
+    func processPending(in modelContext: ModelContext) async {
         // Note: SwiftData predicates can be finicky with enum comparisons; keep this simple and robust
         // by fetching and filtering in-memory. (This is early-stage and datasets are small.)
         do {
             let allFiles = try modelContext.fetch(FetchDescriptor<SpaceFile>())
             for file in allFiles {
                 if file.sourceType == .paste, file.extractionStatus != .completed {
-                    file.extractedText = file.storedText
-                    file.extractionStatus = .completed
+                    ModelMutationCoordinator.updateSpaceFileExtraction(
+                        spaceFileId: file.id,
+                        extractedText: file.storedText,
+                        status: .completed,
+                        in: modelContext
+                    )
                     continue
                 }
                 if file.sourceType == .fileImport, file.extractionStatus == .pending {
-                    extractIfNeeded(file, in: modelContext)
+                    await extractIfNeeded(file, in: modelContext)
                 }
             }
         } catch {
