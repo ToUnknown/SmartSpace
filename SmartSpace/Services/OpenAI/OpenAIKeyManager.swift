@@ -60,12 +60,13 @@ final class OpenAIKeyManager {
     func removeKey() {
         do {
             try keyStore.deleteKey()
+            hasStoredKey = false
+            status = .notSet
         } catch {
-            // If deletion fails, still reflect the error for transparency.
+            // If deletion fails, reflect the error. (Do not pretend the key is removed.)
+            hasStoredKey = (try? keyStore.readKey()) != nil
             status = .invalid(error: error.localizedDescription)
         }
-        hasStoredKey = false
-        status = .notSet
     }
 
     func testKey() async {

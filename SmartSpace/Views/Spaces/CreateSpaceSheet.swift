@@ -14,8 +14,11 @@ struct CreateSpaceSheet: View {
 
     @Query private var spaces: [Space]
 
+    let openAIKeyManager: OpenAIKeyManager
+
     @State private var name: String = ""
     @State private var templateType: TemplateType = .languageLearning
+    @State private var aiProvider: AIProvider = .appleIntelligence
 
     var body: some View {
         NavigationStack {
@@ -39,6 +42,22 @@ struct CreateSpaceSheet: View {
                         }
                     }
                 }
+
+                if isOpenAIAvailable {
+                    Section("Provider") {
+                        Picker("AI Provider", selection: $aiProvider) {
+                            Text("Apple Intelligence").tag(AIProvider.appleIntelligence)
+                            Text("OpenAI").tag(AIProvider.openAI)
+                        }
+                        .pickerStyle(.segmented)
+                    }
+                } else {
+                    Section {
+                        Text("Add a valid OpenAI API key in Settings to enable OpenAI.")
+                            .font(.footnote)
+                            .foregroundStyle(.secondary)
+                    }
+                }
             }
             .navigationTitle("Create Space")
             .navigationBarTitleDisplayMode(.inline)
@@ -56,10 +75,20 @@ struct CreateSpaceSheet: View {
                 }
             }
         }
+        .onChange(of: openAIKeyManager.status) { _, newValue in
+            // If OpenAI becomes unavailable, revert to the safe default.
+            if newValue != .valid {
+                aiProvider = .appleIntelligence
+            }
+        }
     }
 }
 
 private extension CreateSpaceSheet {
+    var isOpenAIAvailable: Bool {
+        openAIKeyManager.status == .valid
+    }
+
     var trimmedName: String {
         name.trimmingCharacters(in: .whitespacesAndNewlines)
     }
@@ -89,9 +118,11 @@ private extension CreateSpaceSheet {
     func createSpace() {
         guard isFormValid else { return }
 
+        let providerToPersist: AIProvider = isOpenAIAvailable ? aiProvider : .appleIntelligence
         let newSpace = Space(
             name: trimmedName,
-            templateType: templateType
+            templateType: templateType,
+            aiProvider: providerToPersist
         )
         modelContext.insert(newSpace)
         dismiss()
@@ -110,7 +141,7 @@ private extension TemplateType {
 }
 
 #Preview("Empty") {
-    CreateSpaceSheet()
+    CreateSpaceSheet(openAIKeyManager: OpenAIKeyManager())
         .modelContainer(for: Space.self, inMemory: true)
 }
 
@@ -121,7 +152,7 @@ private extension TemplateType {
     let context = container.mainContext
     context.insert(Space(name: "Spanish A1", templateType: .languageLearning))
 
-    return CreateSpaceSheet()
+    return CreateSpaceSheet(openAIKeyManager: OpenAIKeyManager())
         .modelContainer(container)
 }
 

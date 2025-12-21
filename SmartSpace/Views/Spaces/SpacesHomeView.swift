@@ -9,6 +9,9 @@ import SwiftUI
 import SwiftData
 
 struct SpacesHomeView: View {
+    let openAIKeyManager: OpenAIKeyManager
+    var onOpenSettings: (() -> Void)? = nil
+
     @Query(
         filter: #Predicate<Space> { $0.isArchived == false },
         sort: [SortDescriptor(\Space.createdAt, order: .reverse)]
@@ -21,7 +24,15 @@ struct SpacesHomeView: View {
                 emptyState
             } else {
                 List(spaces, id: \.id) { space in
-                    SpaceRow(space: space)
+                    NavigationLink {
+                        SpaceDetailView(
+                            space: space,
+                            openAIKeyManager: openAIKeyManager,
+                            onOpenSettings: onOpenSettings
+                        )
+                    } label: {
+                        SpaceRow(space: space)
+                    }
                 }
                 .listStyle(.plain)
             }
@@ -82,7 +93,7 @@ private extension TemplateType {
 }
 
 #Preview("Empty") {
-    SpacesHomeView()
+    SpacesHomeView(openAIKeyManager: OpenAIKeyManager())
         .modelContainer(for: Space.self, inMemory: true)
 }
 
@@ -94,7 +105,7 @@ private extension TemplateType {
     context.insert(Space(name: "Spanish A1", templateType: .languageLearning))
     context.insert(Space(name: "Bio 101 Debrief", templateType: .lectureDebrief))
 
-    return SpacesHomeView()
+    return SpacesHomeView(openAIKeyManager: OpenAIKeyManager())
         .modelContainer(container)
 }
 

@@ -13,6 +13,7 @@ struct SettingsView: View {
     let openAIKeyManager: OpenAIKeyManager
 
     @State private var apiKeyInput: String = ""
+    @State private var isPresentingRemoveKeyConfirmation = false
 
     var body: some View {
         Form {
@@ -29,8 +30,7 @@ struct SettingsView: View {
                     .disabled(apiKeyInput.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
 
                     Button("Remove key", role: .destructive) {
-                        openAIKeyManager.removeKey()
-                        apiKeyInput = ""
+                        isPresentingRemoveKeyConfirmation = true
                     }
                     .disabled(!openAIKeyManager.hasStoredKey)
 
@@ -48,6 +48,18 @@ struct SettingsView: View {
             ToolbarItem(placement: .topBarTrailing) {
                 Button("Done") { dismiss() }
             }
+        }
+        .alert(
+            "Remove OpenAI key?",
+            isPresented: $isPresentingRemoveKeyConfirmation
+        ) {
+            Button("Cancel", role: .cancel) {}
+            Button("Remove", role: .destructive) {
+                openAIKeyManager.removeKey()
+                apiKeyInput = ""
+            }
+        } message: {
+            Text("Removing the OpenAI key will cause Spaces using OpenAI to fall back to Apple Intelligence.")
         }
         .onAppear {
             openAIKeyManager.loadKeyStatus()

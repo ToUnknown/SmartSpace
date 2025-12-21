@@ -16,7 +16,10 @@ struct ContentView: View {
     var body: some View {
         NavigationStack {
             ZStack(alignment: .bottom) {
-                SpacesHomeView()
+                SpacesHomeView(
+                    openAIKeyManager: openAIKeyManager,
+                    onOpenSettings: { isPresentingSettings = true }
+                )
                     .padding(.bottom, 84)
 
                 Button {
@@ -50,7 +53,7 @@ struct ContentView: View {
         }
         }
         .sheet(isPresented: $isPresentingCreateSpaceSheet) {
-            CreateSpaceSheet()
+            CreateSpaceSheet(openAIKeyManager: openAIKeyManager)
         }
         .sheet(isPresented: $isPresentingSettings) {
             NavigationStack {
