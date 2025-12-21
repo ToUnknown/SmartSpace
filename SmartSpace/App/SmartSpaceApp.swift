@@ -13,6 +13,7 @@ struct SmartSpaceApp: App {
     var sharedModelContainer: ModelContainer = {
         let schema = Schema([
             Space.self,
+            SpaceFile.self,
         ])
         let modelConfiguration = ModelConfiguration(schema: schema, isStoredInMemoryOnly: false)
 

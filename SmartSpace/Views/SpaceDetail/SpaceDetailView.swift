@@ -13,6 +13,8 @@ struct SpaceDetailView: View {
     let openAIKeyManager: OpenAIKeyManager
     var onOpenSettings: (() -> Void)? = nil
 
+    @State private var isPresentingFileManager = false
+
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 12) {
@@ -35,11 +37,14 @@ struct SpaceDetailView: View {
         .toolbar {
             ToolbarItem(placement: .topBarTrailing) {
                 Button {
-                    // TODO v0.5: archive behavior
+                    isPresentingFileManager = true
                 } label: {
                     Image(systemName: "archivebox")
                 }
             }
+        }
+        .sheet(isPresented: $isPresentingFileManager) {
+            SpaceFileManagerView(space: space)
         }
         .safeAreaInset(edge: .bottom) {
             footer
