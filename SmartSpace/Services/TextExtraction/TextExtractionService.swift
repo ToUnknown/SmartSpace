@@ -33,6 +33,7 @@ struct TextExtractionService {
                 spaceFileId: file.id,
                 extractedText: nil,
                 status: .failed,
+                errorMessage: "File is missing.",
                 in: modelContext
             )
             return
@@ -48,7 +49,13 @@ struct TextExtractionService {
 
         // Do parsing off-main. Only apply model updates back on the MainActor.
         let result = await Task.detached(priority: .utility) {
-            Result<String, Error> { try TextExtractor.extractPlainText(from: url) }
+            Result<String, Error> {
+                let text = try TextExtractor.extractPlainText(from: url)
+                if let message = LanguageGatekeeper.englishOnlyErrorMessage(for: text) {
+                    throw TextExtractor.ExtractionError.nonEnglish(message)
+                }
+                return text
+            }
         }.value
 
         switch result {
@@ -63,10 +70,27 @@ struct TextExtractionService {
             #if DEBUG
             print("TextExtractionService: extraction failed for \(url.lastPathComponent): \(error)")
             #endif
+            let message: String
+            if let extractionError = error as? TextExtractor.ExtractionError {
+                // Convert technical error to calm, user-facing copy.
+                switch extractionError {
+                case .nonEnglish:
+                    message = "Only English language is available right now."
+                case .unsupportedExtension:
+                    message = "This file type isn’t supported."
+                case .unreadablePDF:
+                    message = "Couldn’t read this PDF."
+                case .emptyResult:
+                    message = "This file has no readable text."
+                }
+            } else {
+                message = "Couldn’t read this file."
+            }
             ModelMutationCoordinator.updateSpaceFileExtraction(
                 spaceFileId: fileId,
                 extractedText: nil,
                 status: .failed,
+                errorMessage: message,
                 in: modelContext
             )
         }
@@ -81,10 +105,13 @@ struct TextExtractionService {
             let allFiles = try modelContext.fetch(FetchDescriptor<SpaceFile>())
             for file in allFiles {
                 if file.sourceType == .paste, file.extractionStatus != .completed {
+                    let text = file.storedText ?? ""
+                    let message = LanguageGatekeeper.englishOnlyErrorMessage(for: text)
                     ModelMutationCoordinator.updateSpaceFileExtraction(
                         spaceFileId: file.id,
-                        extractedText: file.storedText,
-                        status: .completed,
+                        extractedText: message == nil ? file.storedText : nil,
+                        status: message == nil ? .completed : .failed,
+                        errorMessage: message,
                         in: modelContext
                     )
                     continue
@@ -141,6 +168,7 @@ private enum TextExtractor {
         case unsupportedExtension(String)
         case unreadablePDF
         case emptyResult
+        case nonEnglish(String)
 
         var errorDescription: String? {
             switch self {
@@ -150,6 +178,8 @@ private enum TextExtractor {
                 return "Could not read PDF."
             case .emptyResult:
                 return "Extracted text was empty."
+            case .nonEnglish(let message):
+                return message
             }
         }
     }

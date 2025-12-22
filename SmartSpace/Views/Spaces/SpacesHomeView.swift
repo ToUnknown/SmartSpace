@@ -12,35 +12,88 @@ struct SpacesHomeView: View {
     let openAIKeyManager: OpenAIKeyManager
     var onOpenSettings: (() -> Void)? = nil
 
+    @Environment(\.modelContext) private var modelContext
+
+    private enum SortMode: String {
+        case newestFirst
+        case alphabetical
+    }
+
+    @State private var sortMode: SortMode = .newestFirst
+
     @Query(
         filter: #Predicate<Space> { $0.isArchived == false },
         sort: [SortDescriptor(\Space.createdAt, order: .reverse)]
     )
     private var spaces: [Space]
 
+    private var sortedSpaces: [Space] {
+        switch sortMode {
+        case .newestFirst:
+            return spaces.sorted { lhs, rhs in
+                if lhs.createdAt != rhs.createdAt { return lhs.createdAt > rhs.createdAt }
+                return lhs.name.localizedCaseInsensitiveCompare(rhs.name) == .orderedAscending
+            }
+        case .alphabetical:
+            return spaces.sorted { lhs, rhs in
+                let c = lhs.name.localizedCaseInsensitiveCompare(rhs.name)
+                if c != .orderedSame { return c == .orderedAscending }
+                return lhs.createdAt > rhs.createdAt
+            }
+        }
+    }
+
     var body: some View {
         Group {
             if spaces.isEmpty {
                 emptyState
             } else {
-                List(spaces, id: \.id) { space in
-                    NavigationLink {
-                        SpaceDetailView(
-                            space: space,
-                            openAIKeyManager: openAIKeyManager,
-                            onOpenSettings: onOpenSettings
-                        )
-                    } label: {
-                        SpaceRow(space: space)
+                List {
+                    ForEach(sortedSpaces, id: \.id) { space in
+                        NavigationLink {
+                            SpaceDetailView(
+                                space: space,
+                                openAIKeyManager: openAIKeyManager,
+                                onOpenSettings: onOpenSettings
+                            )
+                        } label: {
+                            SpaceRow(space: space, openAIStatus: openAIKeyManager.status)
+                        }
                     }
+                    .onDelete(perform: deleteSpaces)
                 }
                 .listStyle(.plain)
+                // Remove default top scroll-content margin so the list starts flush at the top.
+                .contentMargins(.top, 0, for: .scrollContent)
+                .animation(.easeInOut(duration: 0.2), value: sortMode)
+            }
+        }
+        .toolbar {
+            ToolbarItem(placement: .topBarTrailing) {
+                Button {
+                    withAnimation(.easeInOut(duration: 0.2)) {
+                        sortMode = (sortMode == .newestFirst) ? .alphabetical : .newestFirst
+                    }
+                } label: {
+                    Image(systemName: "line.3.horizontal.decrease")
+                }
+                .accessibilityLabel(sortMode == .newestFirst ? "Sort alphabetically" : "Sort by newest")
             }
         }
     }
 }
 
 private extension SpacesHomeView {
+    func deleteSpaces(at offsets: IndexSet) {
+        // Map offsets from the currently displayed order.
+        let ids = offsets.compactMap { index in
+            sortedSpaces.indices.contains(index) ? sortedSpaces[index].id : nil
+        }
+        for id in ids {
+            ModelMutationCoordinator.deleteSpace(spaceId: id, in: modelContext)
+        }
+    }
+
     var emptyState: some View {
         VStack(spacing: 8) {
             Text("No Spaces yet")
@@ -59,12 +112,17 @@ private extension SpacesHomeView {
 
 private struct SpaceRow: View {
     let space: Space
+    let openAIStatus: OpenAIKeyManager.KeyStatus
 
     var body: some View {
         HStack(spacing: 12) {
-            Image(systemName: "square.stack.3d.up")
-                .font(.title3)
-                .frame(width: 32, height: 32)
+            SpaceCoverImageView(
+                space: space,
+                size: 44,
+                cornerRadius: 12,
+                showsBackground: false,
+                showsBorder: false
+            )
 
             VStack(alignment: .leading, spacing: 4) {
                 Text(space.name)
@@ -81,17 +139,6 @@ private struct SpaceRow: View {
     }
 }
 
-private extension TemplateType {
-    var displayName: String {
-        switch self {
-        case .languageLearning: return "Language Learning"
-        case .lectureDebrief: return "Lecture Debrief"
-        case .testPreparation: return "Test Preparation"
-        case .researchAnalysis: return "Research Analysis"
-        }
-    }
-}
-
 #Preview("Empty") {
     SpacesHomeView(openAIKeyManager: OpenAIKeyManager())
         .modelContainer(for: Space.self, inMemory: true)
@@ -103,7 +150,7 @@ private extension TemplateType {
 
     let context = container.mainContext
     context.insert(Space(name: "Spanish A1", templateType: .languageLearning))
-    context.insert(Space(name: "Bio 101 Debrief", templateType: .lectureDebrief))
+    context.insert(Space(name: "Bio 101 Notes", templateType: .lectureNotes))
 
     return SpacesHomeView(openAIKeyManager: OpenAIKeyManager())
         .modelContainer(container)

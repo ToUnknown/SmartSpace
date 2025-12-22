@@ -38,21 +38,15 @@ struct ContentView: View {
                 .accessibilityLabel("Create Space")
             }
             .navigationTitle("SmartSpace")
-            .toolbar{
-            ToolbarItem(placement: .topBarLeading) {
-                Button{
-                    isPresentingSettings = true
-                } label: {
-                    Image(systemName: "character")
+            .toolbar {
+                ToolbarItem(placement: .topBarLeading) {
+                    Button {
+                        isPresentingSettings = true
+                    } label: {
+                        Image(systemName: "key.icloud")
+                    }
                 }
             }
-            ToolbarItem(placement: .topBarTrailing) {
-                Button{
-                } label: {
-                    Image(systemName: "line.3.horizontal.decrease")
-                }
-            }
-        }
         }
         .sheet(isPresented: $isPresentingCreateSpaceSheet) {
             CreateSpaceSheet(openAIKeyManager: openAIKeyManager)

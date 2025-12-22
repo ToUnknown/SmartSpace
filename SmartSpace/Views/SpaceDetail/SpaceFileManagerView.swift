@@ -14,6 +14,7 @@ struct SpaceFileManagerView: View {
     @Environment(\.modelContext) private var modelContext
 
     let space: Space
+    let startWithFilePicker: Bool
 
     @State private var isPresentingFileImporter = false
     @State private var isPresentingPasteText = false
@@ -21,8 +22,9 @@ struct SpaceFileManagerView: View {
     @Query private var files: [SpaceFile]
     private let extractionService = TextExtractionService()
 
-    init(space: Space) {
+    init(space: Space, startWithFilePicker: Bool = false) {
         self.space = space
+        self.startWithFilePicker = startWithFilePicker
         let spaceId = space.id
         _files = Query(
             filter: #Predicate<SpaceFile> { $0.space.id == spaceId },
@@ -67,6 +69,14 @@ struct SpaceFileManagerView: View {
         .task {
             // Trigger pending extraction when opening the file manager (runs once per file via status gating).
             await extractionService.processPending(in: modelContext)
+        }
+        .onAppear {
+            // When launched from the Space empty state, open the file picker immediately.
+            if startWithFilePicker {
+                Task { @MainActor in
+                    isPresentingFileImporter = true
+                }
+            }
         }
         .fileImporter(
             isPresented: $isPresentingFileImporter,
@@ -133,6 +143,13 @@ private extension SpaceFileManagerView {
                 }
                     .font(.subheadline)
                     .foregroundStyle(.secondary)
+
+                if file.extractionStatus == .failed, let message = file.extractionErrorMessage, !message.isEmpty {
+                    Text(message)
+                        .font(.footnote)
+                        .foregroundStyle(.red)
+                        .lineLimit(2)
+                }
             }
 
             Spacer(minLength: 0)

@@ -26,7 +26,7 @@ struct OpenAIKeyStore {
     private let service = "SmartSpace"
     private let account = "openai_api_key"
 
-    func readKey() throws -> String? {
+    nonisolated func readKey() throws -> String? {
         let query: [String: Any] = [
             kSecClass as String: kSecClassGenericPassword,
             kSecAttrService as String: service,
@@ -50,7 +50,7 @@ struct OpenAIKeyStore {
         return key
     }
 
-    func saveKey(_ key: String) throws {
+    nonisolated func saveKey(_ key: String) throws {
         let data = Data(key.utf8)
 
         // Try update first
@@ -87,7 +87,7 @@ struct OpenAIKeyStore {
         }
     }
 
-    func deleteKey() throws {
+    nonisolated func deleteKey() throws {
         let query: [String: Any] = [
             kSecClass as String: kSecClassGenericPassword,
             kSecAttrService as String: service,

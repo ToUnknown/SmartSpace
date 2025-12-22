@@ -35,12 +35,22 @@ final class OpenAIKeyManager {
 
     func loadKeyStatus() {
         do {
-            hasStoredKey = (try keyStore.readKey()) != nil
+            let raw = try keyStore.readKey()
+            let trimmed = raw?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+            hasStoredKey = !trimmed.isEmpty
         } catch {
             hasStoredKey = false
         }
-        // Do not auto-test; leave status neutral until user taps "Test connection".
-        status = .notSet
+
+        // If a key is stored, reflect that immediately so the rest of the app can use OpenAI
+        // without forcing the user to re-enter the key after relaunch.
+        // We still validate in the background and will flip to `.invalid(...)` if needed.
+        if hasStoredKey {
+            status = .valid
+            Task { await testKey() }
+        } else {
+            status = .notSet
+        }
     }
 
     func saveKey(_ key: String) {
@@ -50,7 +60,9 @@ final class OpenAIKeyManager {
         do {
             try keyStore.saveKey(trimmed)
             hasStoredKey = true
-            status = .notSet
+            // Immediately kick off validation so Settings reflects a useful status.
+            status = .checking
+            Task { await testKey() }
         } catch {
             hasStoredKey = false
             status = .invalid(error: error.localizedDescription)
@@ -71,7 +83,9 @@ final class OpenAIKeyManager {
 
     func testKey() async {
         do {
-            guard let key = try keyStore.readKey(), !key.isEmpty else {
+            guard let key = try keyStore.readKey()?.trimmingCharacters(in: .whitespacesAndNewlines),
+                  !key.isEmpty
+            else {
                 hasStoredKey = false
                 status = .notSet
                 return

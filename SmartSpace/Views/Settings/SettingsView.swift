@@ -14,39 +14,65 @@ struct SettingsView: View {
 
     @State private var apiKeyInput: String = ""
     @State private var isPresentingRemoveKeyConfirmation = false
+    @FocusState private var isKeyFieldFocused: Bool
+
+    private let maskedKeyPlaceholder = "••••••••••••"
 
     var body: some View {
         Form {
-            Section("OpenAI") {
+            Section("OpenAI API Key") {
                 SecureField("API key", text: $apiKeyInput)
                     .textInputAutocapitalization(.never)
                     .autocorrectionDisabled()
-
-                VStack(alignment: .leading, spacing: 8) {
-                    Button("Save key") {
-                        openAIKeyManager.saveKey(apiKeyInput)
-                        apiKeyInput = ""
+                    .focused($isKeyFieldFocused)
+                    .submitLabel(.done)
+                    .onSubmit {
+                        saveKey()
                     }
-                    .disabled(apiKeyInput.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
-
-                    Button("Remove key", role: .destructive) {
-                        isPresentingRemoveKeyConfirmation = true
+                    .onTapGesture {
+                        // If a key exists, show a masked placeholder. Clear it on tap so the user can paste a new key.
+                        if apiKeyInput == maskedKeyPlaceholder {
+                            apiKeyInput = ""
+                        }
                     }
-                    .disabled(!openAIKeyManager.hasStoredKey)
-
-                    Button("Test connection") {
-                        Task { await openAIKeyManager.testKey() }
-                    }
-                    .disabled(!openAIKeyManager.hasStoredKey || openAIKeyManager.status == .checking)
-                }
 
                 statusRow
             }
+
+            Section("Connection") {
+                Button("Test connection") {
+                    Task { await openAIKeyManager.testKey() }
+                }
+                .disabled(!openAIKeyManager.hasStoredKey || openAIKeyManager.status == .checking)
+            }
+
+            Section {
+                Button("Remove key", role: .destructive) {
+                    isPresentingRemoveKeyConfirmation = true
+                }
+                .disabled(!openAIKeyManager.hasStoredKey)
+            } header: {
+                Text("Danger Zone")
+            } footer: {
+                Text("Removing the key will cause Spaces using OpenAI to fall back to Apple Intelligence.")
+                    .font(.footnote)
+            }
         }
-        .navigationTitle("Settings")
+        .navigationTitle("Cloud models")
         .toolbar {
+            ToolbarItem(placement: .topBarLeading) {
+                Button("Cancel") { dismiss() }
+            }
             ToolbarItem(placement: .topBarTrailing) {
-                Button("Done") { dismiss() }
+                Button("Save") {
+                    saveKey()
+                    dismiss()
+                }
+                .disabled(
+                    apiKeyInput.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+                    || apiKeyInput == maskedKeyPlaceholder
+                    || openAIKeyManager.status == .checking
+                )
             }
         }
         .alert(
@@ -58,21 +84,49 @@ struct SettingsView: View {
                 openAIKeyManager.removeKey()
                 apiKeyInput = ""
             }
-        } message: {
-            Text("Removing the OpenAI key will cause Spaces using OpenAI to fall back to Apple Intelligence.")
         }
         .onAppear {
             openAIKeyManager.loadKeyStatus()
+            // If a key is already stored, show a masked placeholder in the field.
+            if openAIKeyManager.hasStoredKey, apiKeyInput.isEmpty {
+                apiKeyInput = maskedKeyPlaceholder
+            }
+        }
+        .onChange(of: openAIKeyManager.hasStoredKey) { _, hasKey in
+            if hasKey {
+                if apiKeyInput.isEmpty {
+                    apiKeyInput = maskedKeyPlaceholder
+                }
+            } else {
+                if apiKeyInput == maskedKeyPlaceholder {
+                    apiKeyInput = ""
+                }
+            }
         }
     }
 }
 
 private extension SettingsView {
+    func saveKey() {
+        let trimmed = apiKeyInput.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty, trimmed != maskedKeyPlaceholder else { return }
+        openAIKeyManager.saveKey(trimmed)
+        apiKeyInput = ""
+        isKeyFieldFocused = false
+    }
+
     var statusRow: some View {
         VStack(alignment: .leading, spacing: 4) {
-            Text(statusTitle)
-                .font(.subheadline)
-                .foregroundStyle(statusColor)
+            HStack(spacing: 8) {
+                Text(statusTitle)
+                    .font(.subheadline)
+                    .foregroundStyle(statusColor)
+
+                if openAIKeyManager.status == .checking {
+                    ProgressView()
+                        .controlSize(.small)
+                }
+            }
 
             if case .invalid(let error) = openAIKeyManager.status {
                 Text(invalidKeyMessage(for: error))

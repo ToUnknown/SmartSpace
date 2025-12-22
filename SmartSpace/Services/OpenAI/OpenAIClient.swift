@@ -30,9 +30,11 @@ struct OpenAIClient {
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
 
         let body: [String: Any] = [
-            "model": "gpt-5-mini",
+            "model": "gpt-5-nano",
             "input": "ping",
-            "max_output_tokens": 1
+            // OpenAI Responses API requires a minimum output token budget.
+            // Keep this small but valid for a cheap connectivity check.
+            "max_output_tokens": 16
         ]
 
         do {

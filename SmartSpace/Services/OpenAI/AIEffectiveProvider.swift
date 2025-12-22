@@ -11,9 +11,14 @@ func effectiveProvider(
     for space: Space,
     openAIStatus: OpenAIKeyManager.KeyStatus
 ) -> AIProvider {
-    if space.aiProvider == .openAI, openAIStatus == .valid {
+    guard space.aiProvider == .openAI else { return .appleIntelligence }
+
+    switch openAIStatus {
+    case .valid, .checking:
+        // While checking, prefer OpenAI so generation can start immediately.
+        // If the key turns out invalid, the app will fall back on the next run.
         return .openAI
-    } else {
+    case .notSet, .invalid:
         return .appleIntelligence
     }
 }

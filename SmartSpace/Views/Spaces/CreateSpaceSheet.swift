@@ -38,7 +38,13 @@ struct CreateSpaceSheet: View {
                 Section("Template") {
                     Picker("Template Type", selection: $templateType) {
                         ForEach(TemplateType.allCases) { type in
-                            Text(type.displayName).tag(type)
+                            VStack(alignment: .leading, spacing: 2) {
+                                Text(type.displayName)
+                                Text(type.description)
+                                    .font(.footnote)
+                                    .foregroundStyle(.secondary)
+                            }
+                            .tag(type)
                         }
                     }
                 }
@@ -126,17 +132,6 @@ private extension CreateSpaceSheet {
         )
         ModelMutationCoordinator.insert(newSpace, in: modelContext)
         dismiss()
-    }
-}
-
-private extension TemplateType {
-    var displayName: String {
-        switch self {
-        case .languageLearning: return "Language Learning"
-        case .lectureDebrief: return "Lecture Debrief"
-        case .testPreparation: return "Test Preparation"
-        case .researchAnalysis: return "Research Analysis"
-        }
     }
 }
 

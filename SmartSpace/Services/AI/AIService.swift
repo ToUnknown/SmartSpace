@@ -22,6 +22,11 @@ protocol AIService {
         context: String
     ) async throws -> [(term: String, definition: String)]
 
+    func generateMainQuestion(context: String) async throws -> String
+    func generateInsights(context: String) async throws -> String
+    func generateArgumentCounterargument(context: String) async throws -> String
+    func generateContentOutline(context: String) async throws -> String
+
     func answerQuestion(
         context: String,
         question: String

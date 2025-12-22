@@ -11,7 +11,7 @@ import SwiftData
 struct BlockSeeder {
     @MainActor
     func seedBlocksIfNeeded(for space: Space, in modelContext: ModelContext) {
-        let required = requiredBlockTypes(for: space.templateType)
+        let required = TemplateBlockMap.blockTypes(for: space.templateType)
 
         // Fetch blocks for this space, then filter in-memory (enum comparisons in SwiftData predicates
         // can be finicky; this keeps seeding reliable and deterministic).
@@ -34,19 +34,6 @@ struct BlockSeeder {
         for type in required {
             if existingTypes.contains(type.rawValue) { continue }
             ModelMutationCoordinator.insert(GeneratedBlock(space: space, blockType: type), in: modelContext)
-        }
-    }
-
-    func requiredBlockTypes(for template: TemplateType) -> [BlockType] {
-        switch template {
-        case .languageLearning:
-            return [.summary, .flashcards, .quiz, .keyTerms]
-        case .lectureDebrief:
-            return [.summary, .mainQuestion, .keyTerms, .insights]
-        case .testPreparation:
-            return [.summary, .mainQuestion, .flashcards, .quiz]
-        case .researchAnalysis:
-            return [.summary, .argumentCounterargument, .contentOutline]
         }
     }
 }

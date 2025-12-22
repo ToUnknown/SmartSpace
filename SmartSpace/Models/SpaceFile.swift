@@ -20,6 +20,13 @@ enum ExtractionStatus: String, Codable {
     case failed
 }
 
+enum FileSummaryStatus: String, Codable {
+    case pending
+    case summarizing
+    case ready
+    case failed
+}
+
 @Model
 final class SpaceFile {
     var id: UUID
@@ -39,6 +46,19 @@ final class SpaceFile {
     // Extraction (v0.7)
     var extractedText: String?
     var extractionStatus: ExtractionStatus = ExtractionStatus.pending
+    /// Human-readable extraction error message (e.g., unsupported language). Optional for migration safety.
+    var extractionErrorMessage: String?
+
+    // Apple Intelligence file summary (used only for Apple provider context building)
+    var aiSummaryText: String?
+    // Store as an optional raw value for migration safety (older stores won't have this field).
+    var aiSummaryStatusRaw: String?
+    var aiSummaryErrorMessage: String?
+
+    var aiSummaryStatus: FileSummaryStatus {
+        get { FileSummaryStatus(rawValue: aiSummaryStatusRaw ?? FileSummaryStatus.pending.rawValue) ?? .pending }
+        set { aiSummaryStatusRaw = newValue.rawValue }
+    }
 
     init(
         space: Space,
@@ -60,9 +80,17 @@ final class SpaceFile {
             // Do NOT overwrite user-pasted text; mirror it into extractedText for downstream pipelines.
             self.extractedText = storedText
             self.extractionStatus = ExtractionStatus.completed
+            self.extractionErrorMessage = nil
+            self.aiSummaryText = nil
+            self.aiSummaryStatusRaw = nil
+            self.aiSummaryErrorMessage = nil
         case .fileImport:
             self.extractedText = nil
             self.extractionStatus = ExtractionStatus.pending
+            self.extractionErrorMessage = nil
+            self.aiSummaryText = nil
+            self.aiSummaryStatusRaw = nil
+            self.aiSummaryErrorMessage = nil
         }
     }
 }
